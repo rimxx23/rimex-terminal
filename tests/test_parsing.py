@@ -13,6 +13,7 @@ from scanner import (
     format_money,
     is_valid_address,
     lp_risk_level,
+    top10_risk_level,
 )
 from tests.conftest import BONK
 
@@ -119,6 +120,21 @@ def test_rugcheck_summary(rugcheck_summary):
 )
 def test_lp_risk_level_boundaries(value, expected):
     assert lp_risk_level(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        (Decimal("10"), "safe"),
+        (Decimal("34.99"), "safe"),
+        (Decimal("35"), "warning"),
+        (Decimal("69.99"), "warning"),
+        (Decimal("70"), "danger"),
+    ],
+)
+def test_top10_risk_level_boundaries(value, expected):
+    assert top10_risk_level(value) == expected
 
 
 @pytest.mark.parametrize(

@@ -27,6 +27,7 @@ One scanning core, three interfaces.
 | Mint Authority | Solana RPC | If enabled, the owner can print unlimited tokens |
 | Freeze Authority | Solana RPC | If enabled, the owner can freeze your tokens |
 | LP locked % | RugCheck | Unlocked liquidity can be pulled (rug pull) |
+| Top 10 holders %, holder count | GeckoTerminal | A few wallets holding most of the supply can dump the price |
 | Risk score and flags | RugCheck | Aggregated contract risks |
 
 All three sources are queried **in parallel** with `asyncio.gather`, so total scan time equals the slowest source, not the sum. If one source fails, the scan still returns everything else and marks missing data as `unknown` — never as safe.

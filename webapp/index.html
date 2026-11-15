@@ -126,6 +126,8 @@
       <div class="row"><span class="label">Mint Authority</span><span class="value" data-field="mint"></span></div>
       <div class="row"><span class="label">Freeze Authority</span><span class="value" data-field="freeze"></span></div>
       <div class="row"><span class="label">LP locked</span><span class="value" data-field="lp"></span></div>
+      <div class="row"><span class="label">Top 10 holders</span><span class="value" data-field="top10"></span></div>
+      <div class="row"><span class="label">Holders</span><span class="value" data-field="holders"></span></div>
       <div class="row"><span class="label">RugCheck risk</span><span class="value" data-field="risk"></span></div>
       <div data-field="notices"></div>
     </div>
@@ -185,6 +187,8 @@
       setField(view, "mint", ...authority(report.mint_authority, report.authorities_loaded));
       setField(view, "freeze", ...authority(report.freeze_authority, report.authorities_loaded));
       setField(view, "lp", report.lp_locked_pct === null ? "—" : `${Number(report.lp_locked_pct).toFixed(1)}%`, report.lp_level);
+      setField(view, "top10", report.top10_holders_pct === null ? "—" : `${Number(report.top10_holders_pct).toFixed(1)}%`, report.top10_level);
+      setField(view, "holders", report.holders_count === null ? "—" : report.holders_count.toLocaleString("en-US"));
       setField(view, "risk", report.risk_score === null ? "—" : `${report.risk_score} (lower is safer)`);
       const source = report.market_source ? ` · market data: ${report.market_source}` : "";
       setField(view, "elapsed", `Scanned in ${report.elapsed.toFixed(2)}s${source}`);
@@ -257,14 +261,40 @@
       };
     }
 
+    const TOP10_WARNING_PCT = 35;
+    const TOP10_DANGER_PCT = 70;
+
+    function top10Level(pct) {
+      if (pct >= TOP10_DANGER_PCT) return "danger";
+      if (pct >= TOP10_WARNING_PCT) return "warning";
+      return "safe";
+    }
+
+    async function loadHoldersFromBrowser(address) {
+      const response = await fetch(
+        `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${encodeURIComponent(address)}/info`,
+        { headers: { Accept: "application/json" } }
+      );
+      if (!response.ok) throw new Error(`GeckoTerminal HTTP ${response.status}`);
+      const holders = (await response.json())?.data?.attributes?.holders;
+      const top10 = holders?.distribution_percentage?.top_10;
+      if (top10 === undefined || top10 === null) throw new Error("No holders data");
+      return {
+        holders_count: holders.count ?? null,
+        top10_holders_pct: top10,
+        top10_level: top10Level(Number(top10)),
+      };
+    }
+
     function withoutErrors(errors, prefixes) {
       return errors.filter((error) => !prefixes.some((prefix) => error.startsWith(prefix)));
     }
 
     async function fillMissingData(report) {
-      const [market, authorities] = await Promise.allSettled([
+      const [market, authorities, holders] = await Promise.allSettled([
         report.market_source ? Promise.reject() : loadMarketFromBrowser(report.address),
         report.authorities_loaded ? Promise.reject() : loadAuthoritiesFromBrowser(report.address),
+        report.top10_holders_pct !== null ? Promise.reject() : loadHoldersFromBrowser(report.address),
       ]);
       let filled = report;
       if (market.status === "fulfilled") {
@@ -280,6 +310,13 @@
           ...filled,
           ...authorities.value,
           errors: withoutErrors(filled.errors, ["Solana RPC:"]),
+        };
+      }
+      if (holders.status === "fulfilled") {
+        filled = {
+          ...filled,
+          ...holders.value,
+          errors: withoutErrors(filled.errors, ["Holders:"]),
         };
       }
       return filled;
@@ -305,7 +342,7 @@
         }
         const report = await fillMissingData(data);
         renderReport(report);
-        const dangerous = report.mint_authority || report.freeze_authority || report.lp_level === "danger";
+        const dangerous = report.mint_authority || report.freeze_authority || report.lp_level === "danger" || report.top10_level === "danger";
         tg.HapticFeedback.notificationOccurred(dangerous ? "warning" : "success");
       } catch {
         showMessage("error", "Network error. Try again.");
@@ -323,8 +360,9 @@
       }
     });
 
-    const startAddress = tg.initDataUnsafe?.start_param;
-    if (startAddress) {
+    const SOLANA_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+    const startAddress = tg.initDataUnsafe?.start_param || new URLSearchParams(location.search).get("address");
+    if (startAddress && SOLANA_ADDRESS_RE.test(startAddress)) {
       input.value = startAddress;
       scan(startAddress);
     }

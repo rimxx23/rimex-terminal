@@ -22,6 +22,18 @@ GECKOTERMINAL_TOKEN = {
 }
 
 
+GECKOTERMINAL_INFO = {
+    "data": {
+        "attributes": {
+            "holders": {
+                "count": 828512,
+                "distribution_percentage": {"top_10": "65.1765", "11_20": "6.4", "21_40": "5.6", "rest": "22.7"},
+            }
+        }
+    }
+}
+
+
 def response_error(status: int) -> aiohttp.ClientResponseError:
     return aiohttp.ClientResponseError(request_info=None, history=(), status=status)
 
@@ -32,6 +44,7 @@ def no_real_geckoterminal(monkeypatch):
         raise AssertionError("GeckoTerminal must be mocked in tests")
 
     monkeypatch.setattr(scanner, "fetch_geckoterminal", blocked)
+    monkeypatch.setattr(scanner, "fetch_holders", blocked)
 
 
 @pytest.fixture
@@ -42,6 +55,7 @@ def fake_sources(monkeypatch, dexscreener_pairs, mint_account, rugcheck_summary)
         "gecko": GECKOTERMINAL_TOKEN,
         "rpc": mint_account,
         "rug": rugcheck_summary,
+        "holders": GECKOTERMINAL_INFO,
     }
 
     def make_fetcher(name):
@@ -58,6 +72,7 @@ def fake_sources(monkeypatch, dexscreener_pairs, mint_account, rugcheck_summary)
     monkeypatch.setattr(scanner, "fetch_geckoterminal", make_fetcher("gecko"))
     monkeypatch.setattr(scanner, "fetch_mint_account", make_fetcher("rpc"))
     monkeypatch.setattr(scanner, "fetch_rugcheck", make_fetcher("rug"))
+    monkeypatch.setattr(scanner, "fetch_holders", make_fetcher("holders"))
     return results, calls
 
 
@@ -69,6 +84,34 @@ async def test_full_scan_combines_all_sources(fake_sources):
     assert report.authorities_loaded is True
     assert report.lp_locked_pct == Decimal("19.428788418908034")
     assert report.errors == []
+
+
+async def test_holders_concentration(fake_sources):
+    report = await scan_solana_token(BONK, session=object())
+
+    assert report.holders_count == 828512
+    assert report.top10_holders_pct == Decimal("65.1765")
+
+
+async def test_holders_failure_keeps_other_data(fake_sources):
+    results, _ = fake_sources
+    results["holders"] = response_error(429)
+
+    report = await scan_solana_token(BONK, session=object())
+
+    assert report.top10_holders_pct is None
+    assert report.symbol == "Bonk"
+    assert report.errors == ["Holders: request rejected (HTTP 429)"]
+
+
+async def test_holders_missing_in_response(fake_sources):
+    results, _ = fake_sources
+    results["holders"] = {"data": {"attributes": {}}}
+
+    report = await scan_solana_token(BONK, session=object())
+
+    assert report.top10_holders_pct is None
+    assert report.errors == ["Holders: no data"]
 
 
 async def test_geckoterminal_not_called_when_dexscreener_works(fake_sources):
@@ -161,6 +204,7 @@ async def test_sources_run_in_parallel(monkeypatch):
     monkeypatch.setattr(scanner, "fetch_dexscreener", slow_list)
     monkeypatch.setattr(scanner, "fetch_mint_account", slow)
     monkeypatch.setattr(scanner, "fetch_rugcheck", slow)
+    monkeypatch.setattr(scanner, "fetch_holders", slow)
 
     report = await scan_solana_token(BONK, session=object())
 
