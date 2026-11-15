@@ -12,6 +12,7 @@ import certifi
 
 DEXSCREENER_URL = "https://api.dexscreener.com/tokens/v1/solana/{address}"
 GECKOTERMINAL_URL = "https://api.geckoterminal.com/api/v2/networks/solana/tokens/{address}"
+GECKOTERMINAL_INFO_URL = GECKOTERMINAL_URL + "/info"
 RUGCHECK_URL = "https://api.rugcheck.xyz/v1/tokens/{address}/report/summary"
 DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 FALLBACK_SOLANA_RPC_URLS = ["https://solana-rpc.publicnode.com"]
@@ -37,6 +38,8 @@ class TokenReport:
     freeze_authority: str | None = None
     lp_locked_pct: Decimal | None = None
     risk_score: int | None = None
+    holders_count: int | None = None
+    top10_holders_pct: Decimal | None = None
     risks: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     elapsed: float = 0.0
@@ -91,6 +94,13 @@ async def fetch_market(session: aiohttp.ClientSession, address: str) -> tuple[st
     except Exception as error:
         reasons.append(f"GeckoTerminal: {describe_error(error)}")
     raise MarketDataUnavailable(reasons)
+
+
+async def fetch_holders(session: aiohttp.ClientSession, address: str) -> dict:
+    url = GECKOTERMINAL_INFO_URL.format(address=address)
+    async with session.get(url, headers={"Accept": "application/json"}) as response:
+        response.raise_for_status()
+        return await response.json()
 
 
 async def fetch_rugcheck(session: aiohttp.ClientSession, address: str) -> dict:
@@ -190,6 +200,16 @@ def apply_rugcheck(report: TokenReport, data: dict) -> None:
     report.risks = [risk["name"] for risk in data.get("risks") or []]
 
 
+def apply_holders(report: TokenReport, data: dict) -> None:
+    attributes = ((data or {}).get("data") or {}).get("attributes") or {}
+    holders = attributes.get("holders") or {}
+    distribution = holders.get("distribution_percentage") or {}
+    report.holders_count = holders.get("count")
+    report.top10_holders_pct = to_decimal(distribution.get("top_10"))
+    if report.top10_holders_pct is None:
+        report.errors.append("Holders: no data")
+
+
 def describe_error(error: BaseException) -> str:
     if isinstance(error, asyncio.TimeoutError):
         return "no response in time (timeout)"
@@ -211,6 +231,7 @@ async def fetch_all(session: aiohttp.ClientSession, address: str) -> list:
         fetch_market(session, address),
         fetch_mint_account(session, address),
         fetch_rugcheck(session, address),
+        fetch_holders(session, address),
         return_exceptions=True,
     )
 
@@ -229,13 +250,14 @@ async def scan_solana_token(
             results = await fetch_all(own_session, address)
     else:
         results = await fetch_all(session, address)
-    market_result, rpc_result, rug_result = results
+    market_result, rpc_result, rug_result, holders_result = results
     report.elapsed = time.perf_counter() - started
 
     sources = [
         ("Market data", market_result, apply_market),
         ("Solana RPC", rpc_result, apply_mint_account),
         ("RugCheck", rug_result, apply_rugcheck),
+        ("Holders", holders_result, apply_holders),
     ]
     for source_name, result, apply in sources:
         if isinstance(result, MarketDataUnavailable):
@@ -267,6 +289,8 @@ def format_authority(value: str | None, loaded: bool) -> str:
 LP_SAFE_PCT = Decimal("90")
 LP_WARNING_PCT = Decimal("50")
 LEVEL_MARKS = {"safe": "🟢", "warning": "🟡", "danger": "🔴"}
+TOP10_WARNING_PCT = Decimal("35")
+TOP10_DANGER_PCT = Decimal("70")
 
 
 def lp_risk_level(value: Decimal | None) -> str | None:
@@ -277,6 +301,27 @@ def lp_risk_level(value: Decimal | None) -> str | None:
     if value >= LP_WARNING_PCT:
         return "warning"
     return "danger"
+
+
+def top10_risk_level(value: Decimal | None) -> str | None:
+    if value is None:
+        return None
+    if value >= TOP10_DANGER_PCT:
+        return "danger"
+    if value >= TOP10_WARNING_PCT:
+        return "warning"
+    return "safe"
+
+
+def format_top10(value: Decimal | None) -> str:
+    level = top10_risk_level(value)
+    if level is None:
+        return "—"
+    return f"{LEVEL_MARKS[level]} {value:.1f}%"
+
+
+def format_holders_count(value: int | None) -> str:
+    return "—" if value is None else f"{value:,}"
 
 
 def format_lp(value: Decimal | None) -> str:
@@ -297,6 +342,8 @@ def format_report(report: TokenReport) -> str:
         f"Mint Authority: {format_authority(report.mint_authority, report.authorities_loaded)}",
         f"Freeze Auth.:   {format_authority(report.freeze_authority, report.authorities_loaded)}",
         f"LP locked:      {format_lp(report.lp_locked_pct)}",
+        f"Top 10 holders: {format_top10(report.top10_holders_pct)}",
+        f"Holders:        {format_holders_count(report.holders_count)}",
         f"RugCheck risk:  {risk} (lower is safer)",
     ]
     if report.risks:

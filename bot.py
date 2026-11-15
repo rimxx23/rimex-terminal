@@ -2,6 +2,7 @@ import asyncio
 import html
 import logging
 import os
+from urllib.parse import urlencode
 
 import aiohttp
 from aiogram import Bot, Dispatcher, F, Router
@@ -25,8 +26,10 @@ from ratelimit import SlidingWindowLimiter
 from scanner import (
     TokenReport,
     create_http_session,
+    format_holders_count,
     format_lp,
     format_money,
+    format_top10,
     is_valid_address,
     scan_solana_token,
 )
@@ -68,6 +71,8 @@ def format_card(report: TokenReport) -> str:
         f"Mint Authority: {format_authority_html(report.mint_authority, report.authorities_loaded)}",
         f"Freeze Authority: {format_authority_html(report.freeze_authority, report.authorities_loaded)}",
         f"LP locked: {format_lp(report.lp_locked_pct)}",
+        f"Top 10 holders: {format_top10(report.top10_holders_pct)}",
+        f"Holders: {format_holders_count(report.holders_count)}",
         f"RugCheck risk: {risk} (lower is safer)",
     ]
     if report.risks:
@@ -81,14 +86,39 @@ def format_card(report: TokenReport) -> str:
     return "\n".join(lines)
 
 
-def build_keyboard(address: str) -> InlineKeyboardMarkup:
+def build_share_url(bot_username: str, address: str) -> str:
+    deep_link = f"https://t.me/{bot_username}?startapp={address}"
+    text = "Check this Solana token with Rimex X-Ray"
+    return f"https://t.me/share/url?{urlencode({'url': deep_link, 'text': text})}"
+
+
+def build_keyboard(
+    address: str,
+    webapp_url: str | None = None,
+    bot_username: str | None = None,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="DexScreener", url=f"https://dexscreener.com/solana/{address}")
     builder.button(text="RugCheck", url=f"https://rugcheck.xyz/tokens/{address}")
     builder.button(text="Solscan", url=f"https://solscan.io/token/{address}")
+    layout = [3]
+    if webapp_url:
+        app_url = f"{webapp_url.rstrip('/')}/?{urlencode({'address': address})}"
+        builder.button(text="🔍 Open in X-Ray", web_app=WebAppInfo(url=app_url))
+        layout.append(1)
+    bottom_row = 1
+    if bot_username:
+        builder.button(text="📤 Share", url=build_share_url(bot_username, address))
+        bottom_row = 2
     builder.button(text="🔄 Refresh", callback_data=f"{REFRESH_PREFIX}{address}")
-    builder.adjust(3, 1)
+    layout.append(bottom_row)
+    builder.adjust(*layout)
     return builder.as_markup()
+
+
+async def card_keyboard(bot: Bot, address: str, webapp_url: str | None) -> InlineKeyboardMarkup:
+    me = await bot.me()
+    return build_keyboard(address, webapp_url, me.username)
 
 
 async def handle_start(message: Message, webapp_url: str | None) -> None:
@@ -100,22 +130,31 @@ async def handle_start(message: Message, webapp_url: str | None) -> None:
     await message.answer(
         "<b>Rimex X-Ray</b>\n\n"
         "Send me a Solana token contract address and I will check it in under a second:\n"
-        "price, liquidity, Mint/Freeze authority and LP lock.",
+        "price, liquidity, Mint/Freeze authority, LP lock and top holders.",
         reply_markup=keyboard,
     )
 
 
-async def handle_address(message: Message, http_session: aiohttp.ClientSession) -> None:
+async def handle_address(
+    message: Message,
+    http_session: aiohttp.ClientSession,
+    webapp_url: str | None,
+) -> None:
     address = message.text.strip()
     if not is_valid_address(address):
         await message.answer("This doesn't look like a Solana token address. Send a contract address.")
         return
     status = await message.answer("🔍 Scanning…")
     report = await run_scan(address, http_session)
-    await status.edit_text(format_card(report), reply_markup=build_keyboard(address))
+    keyboard = await card_keyboard(message.bot, address, webapp_url)
+    await status.edit_text(format_card(report), reply_markup=keyboard)
 
 
-async def handle_refresh(callback: CallbackQuery, http_session: aiohttp.ClientSession) -> None:
+async def handle_refresh(
+    callback: CallbackQuery,
+    http_session: aiohttp.ClientSession,
+    webapp_url: str | None,
+) -> None:
     address = callback.data.removeprefix(REFRESH_PREFIX)
     if not is_valid_address(address):
         await callback.answer("Invalid address", show_alert=True)
@@ -123,7 +162,8 @@ async def handle_refresh(callback: CallbackQuery, http_session: aiohttp.ClientSe
     await callback.answer("Refreshing…")
     report = await run_scan(address, http_session)
     try:
-        await callback.message.edit_text(format_card(report), reply_markup=build_keyboard(address))
+        keyboard = await card_keyboard(callback.bot, address, webapp_url)
+        await callback.message.edit_text(format_card(report), reply_markup=keyboard)
     except TelegramBadRequest as error:
         if "message is not modified" not in str(error):
             raise

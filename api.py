@@ -23,6 +23,7 @@ from scanner import (
     is_valid_address,
     lp_risk_level,
     scan_solana_token,
+    top10_risk_level,
 )
 
 load_dotenv()
@@ -58,6 +59,9 @@ class ScanResponse(BaseModel):
     lp_locked_pct: Decimal | None
     lp_level: Literal["safe", "warning", "danger"] | None
     risk_score: int | None
+    holders_count: int | None
+    top10_holders_pct: Decimal | None
+    top10_level: Literal["safe", "warning", "danger"] | None
     risks: list[str]
     errors: list[str]
     elapsed: float
@@ -67,6 +71,7 @@ class ScanResponse(BaseModel):
         return cls(
             **vars(report),
             lp_level=lp_risk_level(report.lp_locked_pct),
+            top10_level=top10_risk_level(report.top10_holders_pct),
         )
 
 
