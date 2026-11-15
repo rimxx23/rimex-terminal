@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 import ssl
 import sys
@@ -12,7 +13,8 @@ import certifi
 DEXSCREENER_URL = "https://api.dexscreener.com/tokens/v1/solana/{address}"
 GECKOTERMINAL_URL = "https://api.geckoterminal.com/api/v2/networks/solana/tokens/{address}"
 RUGCHECK_URL = "https://api.rugcheck.xyz/v1/tokens/{address}/report/summary"
-SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+FALLBACK_SOLANA_RPC_URLS = ["https://solana-rpc.publicnode.com"]
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=3)
 RUGCHECK_TIMEOUT = aiohttp.ClientTimeout(total=1.5)
 RUGCHECK_CACHE_TTL = 300
@@ -110,9 +112,25 @@ async def fetch_mint_account(session: aiohttp.ClientSession, address: str) -> di
         "method": "getAccountInfo",
         "params": [address, {"encoding": "jsonParsed"}],
     }
-    async with session.post(SOLANA_RPC_URL, json=payload) as response:
-        response.raise_for_status()
-        return await response.json()
+    last_error: Exception | None = None
+    for rpc_url in solana_rpc_urls():
+        try:
+            async with session.post(rpc_url, json=payload) as response:
+                response.raise_for_status()
+                data = await response.json()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+            last_error = error
+            continue
+        if "error" in data:
+            last_error = aiohttp.ClientError(f"RPC error: {data['error']}")
+            continue
+        return data
+    raise last_error
+
+
+def solana_rpc_urls() -> list[str]:
+    primary = os.getenv("SOLANA_RPC_URL") or DEFAULT_SOLANA_RPC_URL
+    return list(dict.fromkeys([primary, *FALLBACK_SOLANA_RPC_URLS]))
 
 
 def apply_dexscreener(report: TokenReport, pairs: list) -> None:

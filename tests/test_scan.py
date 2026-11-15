@@ -194,6 +194,60 @@ class FakeSession:
         return FakeResponse(self.payload)
 
 
+class FailingResponse(FakeResponse):
+    def __init__(self, status):
+        super().__init__(None)
+        self.status = status
+
+    def raise_for_status(self):
+        raise response_error(self.status)
+
+
+class FakeRpcSession:
+    def __init__(self, responses):
+        self.responses = responses
+        self.urls = []
+
+    def post(self, url, **kwargs):
+        self.urls.append(url)
+        return self.responses[len(self.urls) - 1]
+
+
+async def test_rpc_falls_back_to_next_node(monkeypatch, mint_account):
+    monkeypatch.delenv("SOLANA_RPC_URL", raising=False)
+    session = FakeRpcSession([FailingResponse(403), FakeResponse(mint_account)])
+
+    data = await scanner.fetch_mint_account(session, BONK)
+
+    assert data == mint_account
+    assert session.urls == [scanner.DEFAULT_SOLANA_RPC_URL, *scanner.FALLBACK_SOLANA_RPC_URLS]
+
+
+async def test_rpc_error_body_triggers_fallback(monkeypatch, mint_account):
+    monkeypatch.delenv("SOLANA_RPC_URL", raising=False)
+    rate_limited = FakeResponse({"jsonrpc": "2.0", "error": {"code": 429, "message": "Too many requests"}})
+    session = FakeRpcSession([rate_limited, FakeResponse(mint_account)])
+
+    assert await scanner.fetch_mint_account(session, BONK) == mint_account
+
+
+async def test_rpc_raises_when_all_nodes_fail(monkeypatch):
+    monkeypatch.delenv("SOLANA_RPC_URL", raising=False)
+    session = FakeRpcSession([FailingResponse(403), FailingResponse(429)])
+
+    with pytest.raises(aiohttp.ClientResponseError):
+        await scanner.fetch_mint_account(session, BONK)
+
+
+async def test_custom_rpc_url_is_tried_first(monkeypatch, mint_account):
+    monkeypatch.setenv("SOLANA_RPC_URL", "https://mainnet.helius-rpc.com/?api-key=test")
+    session = FakeRpcSession([FakeResponse(mint_account)])
+
+    await scanner.fetch_mint_account(session, BONK)
+
+    assert session.urls == ["https://mainnet.helius-rpc.com/?api-key=test"]
+
+
 async def test_rugcheck_response_is_cached(rugcheck_summary):
     session = FakeSession(rugcheck_summary)
 

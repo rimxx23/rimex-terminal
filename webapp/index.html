@@ -236,19 +236,53 @@
       };
     }
 
-    async function fillMissingMarketData(report) {
-      if (report.market_source) return report;
-      try {
-        const market = await loadMarketFromBrowser(report.address);
-        return {
-          ...report,
-          ...market,
+    async function loadAuthoritiesFromBrowser(address) {
+      const response = await fetch("https://solana-rpc.publicnode.com", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getAccountInfo",
+          params: [address, { encoding: "jsonParsed" }],
+        }),
+      });
+      if (!response.ok) throw new Error(`Solana RPC HTTP ${response.status}`);
+      const parsed = (await response.json())?.result?.value?.data?.parsed;
+      if (!parsed || parsed.type !== "mint") throw new Error("Not a token mint");
+      return {
+        authorities_loaded: true,
+        mint_authority: parsed.info?.mintAuthority ?? null,
+        freeze_authority: parsed.info?.freezeAuthority ?? null,
+      };
+    }
+
+    function withoutErrors(errors, prefixes) {
+      return errors.filter((error) => !prefixes.some((prefix) => error.startsWith(prefix)));
+    }
+
+    async function fillMissingData(report) {
+      const [market, authorities] = await Promise.allSettled([
+        report.market_source ? Promise.reject() : loadMarketFromBrowser(report.address),
+        report.authorities_loaded ? Promise.reject() : loadAuthoritiesFromBrowser(report.address),
+      ]);
+      let filled = report;
+      if (market.status === "fulfilled") {
+        filled = {
+          ...filled,
+          ...market.value,
           market_source: "DexScreener (direct)",
-          errors: report.errors.filter((error) => !MARKET_ERROR_PREFIXES.some((prefix) => error.startsWith(prefix))),
+          errors: withoutErrors(filled.errors, MARKET_ERROR_PREFIXES),
         };
-      } catch {
-        return report;
       }
+      if (authorities.status === "fulfilled") {
+        filled = {
+          ...filled,
+          ...authorities.value,
+          errors: withoutErrors(filled.errors, ["Solana RPC:"]),
+        };
+      }
+      return filled;
     }
 
     async function scan(address) {
@@ -269,9 +303,9 @@
           tg.HapticFeedback.notificationOccurred("error");
           return;
         }
-        const report = await fillMissingMarketData(data);
+        const report = await fillMissingData(data);
         renderReport(report);
-        const dangerous = data.mint_authority || data.freeze_authority || data.lp_level === "danger";
+        const dangerous = report.mint_authority || report.freeze_authority || report.lp_level === "danger";
         tg.HapticFeedback.notificationOccurred(dangerous ? "warning" : "success");
       } catch {
         showMessage("error", "Network error. Try again.");
