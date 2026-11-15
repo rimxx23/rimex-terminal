@@ -92,6 +92,45 @@ def build_share_url(bot_username: str, address: str) -> str:
     return f"https://t.me/share/url?{urlencode({'url': deep_link, 'text': text})}"
 
 
+def build_app_url(webapp_url: str, address: str) -> str:
+    return f"{webapp_url.rstrip('/')}/?{urlencode({'address': address})}"
+
+
+def short_address(address: str) -> str:
+    return f"{address[:4]}…{address[-4:]}"
+
+
+def format_open_app_message(address: str) -> str:
+    return (
+        f"<b>Token</b> <code>{short_address(address)}</code>\n\n"
+        "Tap <b>🔍 Open in X-Ray</b> to see price, liquidity, "
+        "Mint/Freeze authority, LP lock and top holders."
+    )
+
+
+def build_open_app_keyboard(
+    address: str,
+    webapp_url: str,
+    bot_username: str | None = None,
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔍 Open in X-Ray", web_app=WebAppInfo(url=build_app_url(webapp_url, address)))
+    if bot_username:
+        builder.button(text="📤 Share", url=build_share_url(bot_username, address))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+async def reply_with_app_link(message: Message, address: str, webapp_url: str, edit: bool = False) -> None:
+    me = await message.bot.me()
+    text = format_open_app_message(address)
+    keyboard = build_open_app_keyboard(address, webapp_url, me.username)
+    if edit:
+        await message.edit_text(text, reply_markup=keyboard)
+    else:
+        await message.answer(text, reply_markup=keyboard)
+
+
 def build_keyboard(
     address: str,
     webapp_url: str | None = None,
@@ -103,8 +142,7 @@ def build_keyboard(
     builder.button(text="Solscan", url=f"https://solscan.io/token/{address}")
     layout = [3]
     if webapp_url:
-        app_url = f"{webapp_url.rstrip('/')}/?{urlencode({'address': address})}"
-        builder.button(text="🔍 Open in X-Ray", web_app=WebAppInfo(url=app_url))
+        builder.button(text="🔍 Open in X-Ray", web_app=WebAppInfo(url=build_app_url(webapp_url, address)))
         layout.append(1)
     bottom_row = 1
     if bot_username:
@@ -129,7 +167,7 @@ async def handle_start(message: Message, webapp_url: str | None) -> None:
         keyboard = builder.as_markup()
     await message.answer(
         "<b>Rimex X-Ray</b>\n\n"
-        "Send me a Solana token contract address and I will check it in under a second:\n"
+        "Send me a Solana token contract address and open it in X-Ray:\n"
         "price, liquidity, Mint/Freeze authority, LP lock and top holders.",
         reply_markup=keyboard,
     )
@@ -143,6 +181,9 @@ async def handle_address(
     address = message.text.strip()
     if not is_valid_address(address):
         await message.answer("This doesn't look like a Solana token address. Send a contract address.")
+        return
+    if webapp_url:
+        await reply_with_app_link(message, address, webapp_url)
         return
     status = await message.answer("🔍 Scanning…")
     report = await run_scan(address, http_session)
@@ -158,6 +199,10 @@ async def handle_refresh(
     address = callback.data.removeprefix(REFRESH_PREFIX)
     if not is_valid_address(address):
         await callback.answer("Invalid address", show_alert=True)
+        return
+    if webapp_url:
+        await callback.answer()
+        await reply_with_app_link(callback.message, address, webapp_url, edit=True)
         return
     await callback.answer("Refreshing…")
     report = await run_scan(address, http_session)

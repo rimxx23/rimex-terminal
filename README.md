@@ -19,6 +19,8 @@ CLI (scanner.py) ──┘
 
 One scanning core, three interfaces.
 
+In production the bot does not scan in chat: it replies with an **Open in X-Ray** button that opens the Mini App with the token. Market data APIs rate-limit shared hosting IPs, so the Mini App fills missing market and holder data directly from the user's device.
+
 ## What it checks
 
 | Check | Source | Why it matters |

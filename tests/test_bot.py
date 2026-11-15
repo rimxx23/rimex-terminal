@@ -1,7 +1,16 @@
 from decimal import Decimal
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
-from bot import REFRESH_PREFIX, build_keyboard, format_card
+import bot
+from bot import (
+    REFRESH_PREFIX,
+    build_keyboard,
+    build_open_app_keyboard,
+    format_card,
+    format_open_app_message,
+    short_address,
+)
 from scanner import TokenReport
 from tests.conftest import BONK
 
@@ -101,3 +110,84 @@ def test_card_shows_top10_holders():
 
     assert "Top 10 holders: 🔴 82.5%" in card
     assert "Holders: 1,234" in card
+
+
+class FakeBot:
+    async def me(self):
+        return SimpleNamespace(username="rimexscanner_bot")
+
+
+class FakeMessage:
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.bot = FakeBot()
+        self.answers = []
+
+    async def answer(self, text, reply_markup=None):
+        self.answers.append((text, reply_markup))
+
+
+WEBAPP_URL = "https://rimex-terminal.onrender.com"
+
+
+def test_open_app_message_shows_short_address():
+    text = format_open_app_message(BONK)
+
+    assert "<code>DezX…B263</code>" in text
+    assert "Open in X-Ray" in text
+
+
+def test_open_app_keyboard_opens_mini_app_with_token():
+    keyboard = build_open_app_keyboard(BONK, WEBAPP_URL, "rimexscanner_bot")
+
+    open_button, share_button = [row[0] for row in keyboard.inline_keyboard]
+
+    assert open_button.web_app.url == f"{WEBAPP_URL}/?address={BONK}"
+    assert share_button.text == "📤 Share"
+
+
+async def test_address_message_links_to_mini_app_without_scanning(monkeypatch):
+    async def must_not_scan(*args, **kwargs):
+        raise AssertionError("bot must not scan on the server when Mini App is configured")
+
+    monkeypatch.setattr(bot, "run_scan", must_not_scan)
+    message = FakeMessage(BONK)
+
+    await bot.handle_address(message, http_session=None, webapp_url=WEBAPP_URL)
+
+    text, keyboard = message.answers[0]
+    assert short_address(BONK) in text
+    assert keyboard.inline_keyboard[0][0].web_app.url == f"{WEBAPP_URL}/?address={BONK}"
+
+
+async def test_address_message_scans_when_no_mini_app(monkeypatch):
+    scanned = []
+
+    async def fake_scan(address, http_session):
+        scanned.append(address)
+        return make_report()
+
+    class EditableStatus:
+        async def edit_text(self, text, reply_markup=None):
+            self.text = text
+
+    status = EditableStatus()
+
+    class ScanningMessage(FakeMessage):
+        async def answer(self, text, reply_markup=None):
+            return status
+
+    monkeypatch.setattr(bot, "run_scan", fake_scan)
+
+    await bot.handle_address(ScanningMessage(BONK), http_session=None, webapp_url=None)
+
+    assert scanned == [BONK]
+    assert "Bonk" in status.text
+
+
+async def test_invalid_address_gets_hint():
+    message = FakeMessage("hello")
+
+    await bot.handle_address(message, http_session=None, webapp_url=WEBAPP_URL)
+
+    assert "doesn't look like a Solana token address" in message.answers[0][0]
