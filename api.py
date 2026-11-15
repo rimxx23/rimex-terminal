@@ -51,6 +51,7 @@ class ScanResponse(BaseModel):
     price_usd: Decimal | None
     liquidity_usd: Decimal | None
     volume_24h: Decimal | None
+    market_source: str | None
     authorities_loaded: bool
     mint_authority: str | None
     freeze_authority: str | None
