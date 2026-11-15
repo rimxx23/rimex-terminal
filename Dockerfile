@@ -14,5 +14,4 @@ COPY webapp ./webapp
 RUN useradd --create-home --uid 1000 rimex
 USER rimex
 
-CMD ["sh", "-c", "python bot.py & uvicorn api:app --host 0.0.0.0 --port ${PORT:-8000}"]
-
+CMD ["sh", "-c", "exec uvicorn api:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
