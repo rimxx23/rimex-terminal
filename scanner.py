@@ -10,6 +10,7 @@ import aiohttp
 import certifi
 
 DEXSCREENER_URL = "https://api.dexscreener.com/tokens/v1/solana/{address}"
+GECKOTERMINAL_URL = "https://api.geckoterminal.com/api/v2/networks/solana/tokens/{address}"
 RUGCHECK_URL = "https://api.rugcheck.xyz/v1/tokens/{address}/report/summary"
 SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=3)
@@ -28,6 +29,7 @@ class TokenReport:
     price_usd: Decimal | None = None
     liquidity_usd: Decimal | None = None
     volume_24h: Decimal | None = None
+    market_source: str | None = None
     authorities_loaded: bool = False
     mint_authority: str | None = None
     freeze_authority: str | None = None
@@ -52,6 +54,41 @@ async def fetch_dexscreener(session: aiohttp.ClientSession, address: str) -> lis
     async with session.get(DEXSCREENER_URL.format(address=address)) as response:
         response.raise_for_status()
         return await response.json()
+
+
+async def fetch_geckoterminal(session: aiohttp.ClientSession, address: str) -> dict:
+    url = GECKOTERMINAL_URL.format(address=address)
+    async with session.get(url, headers={"Accept": "application/json"}) as response:
+        response.raise_for_status()
+        return await response.json()
+
+
+class MarketDataUnavailable(Exception):
+    def __init__(self, reasons: list[str]) -> None:
+        super().__init__("; ".join(reasons))
+        self.reasons = reasons
+
+
+async def fetch_market(session: aiohttp.ClientSession, address: str) -> tuple[str, list | dict]:
+    reasons = []
+    try:
+        pairs = await fetch_dexscreener(session, address)
+        if pairs:
+            return "DexScreener", pairs
+        reasons.append("DexScreener: no pairs found")
+    except Exception as error:
+        reasons.append(f"DexScreener: {describe_error(error)}")
+
+    try:
+        return "GeckoTerminal", await fetch_geckoterminal(session, address)
+    except aiohttp.ClientResponseError as error:
+        if error.status == 404:
+            reasons.append("GeckoTerminal: token not found")
+        else:
+            reasons.append(f"GeckoTerminal: {describe_error(error)}")
+    except Exception as error:
+        reasons.append(f"GeckoTerminal: {describe_error(error)}")
+    raise MarketDataUnavailable(reasons)
 
 
 async def fetch_rugcheck(session: aiohttp.ClientSession, address: str) -> dict:
@@ -91,6 +128,31 @@ def apply_dexscreener(report: TokenReport, pairs: list) -> None:
     report.volume_24h = to_decimal((pair.get("volume") or {}).get("h24"))
 
 
+def apply_geckoterminal(report: TokenReport, data: dict) -> None:
+    attributes = ((data or {}).get("data") or {}).get("attributes") or {}
+    if not attributes:
+        report.errors.append("GeckoTerminal: token not found")
+        return
+    report.symbol = attributes.get("symbol")
+    report.name = attributes.get("name")
+    report.price_usd = to_decimal(attributes.get("price_usd"))
+    liquidity = to_decimal(attributes.get("total_reserve_in_usd"))
+    report.liquidity_usd = liquidity.quantize(Decimal("0.01")) if liquidity is not None else None
+    report.volume_24h = to_decimal((attributes.get("volume_usd") or {}).get("h24"))
+
+
+MARKET_APPLIERS = {
+    "DexScreener": apply_dexscreener,
+    "GeckoTerminal": apply_geckoterminal,
+}
+
+
+def apply_market(report: TokenReport, result: tuple[str, list | dict]) -> None:
+    source, data = result
+    report.market_source = source
+    MARKET_APPLIERS[source](report, data)
+
+
 def apply_mint_account(report: TokenReport, data: dict) -> None:
     account = (data.get("result") or {}).get("value") or {}
     account_data = account.get("data")
@@ -128,7 +190,7 @@ def create_http_session() -> aiohttp.ClientSession:
 
 async def fetch_all(session: aiohttp.ClientSession, address: str) -> list:
     return await asyncio.gather(
-        fetch_dexscreener(session, address),
+        fetch_market(session, address),
         fetch_mint_account(session, address),
         fetch_rugcheck(session, address),
         return_exceptions=True,
@@ -149,16 +211,18 @@ async def scan_solana_token(
             results = await fetch_all(own_session, address)
     else:
         results = await fetch_all(session, address)
-    dex_result, rpc_result, rug_result = results
+    market_result, rpc_result, rug_result = results
     report.elapsed = time.perf_counter() - started
 
     sources = [
-        ("DexScreener", dex_result, apply_dexscreener),
+        ("Market data", market_result, apply_market),
         ("Solana RPC", rpc_result, apply_mint_account),
         ("RugCheck", rug_result, apply_rugcheck),
     ]
     for source_name, result, apply in sources:
-        if isinstance(result, BaseException):
+        if isinstance(result, MarketDataUnavailable):
+            report.errors.extend(result.reasons)
+        elif isinstance(result, BaseException):
             report.errors.append(f"{source_name}: {describe_error(result)}")
         else:
             apply(report, result)

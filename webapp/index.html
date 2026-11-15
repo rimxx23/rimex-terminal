@@ -186,7 +186,8 @@
       setField(view, "freeze", ...authority(report.freeze_authority, report.authorities_loaded));
       setField(view, "lp", report.lp_locked_pct === null ? "—" : `${Number(report.lp_locked_pct).toFixed(1)}%`, report.lp_level);
       setField(view, "risk", report.risk_score === null ? "—" : `${report.risk_score} (lower is safer)`);
-      setField(view, "elapsed", `Scanned in ${report.elapsed.toFixed(2)}s`);
+      const source = report.market_source ? ` · market data: ${report.market_source}` : "";
+      setField(view, "elapsed", `Scanned in ${report.elapsed.toFixed(2)}s${source}`);
 
       const notices = view.querySelector('[data-field="notices"]');
       for (const text of [...report.risks.map((risk) => `Risk: ${risk}`), ...report.errors]) {

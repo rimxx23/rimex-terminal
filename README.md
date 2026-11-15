@@ -23,7 +23,7 @@ One scanning core, three interfaces.
 
 | Check | Source | Why it matters |
 |---|---|---|
-| Price, liquidity, 24h volume | DexScreener | Market data from the most liquid pair |
+| Price, liquidity, 24h volume | DexScreener, fallback GeckoTerminal | Market data; GeckoTerminal is used when DexScreener is rate-limited or has no pairs |
 | Mint Authority | Solana RPC | If enabled, the owner can print unlimited tokens |
 | Freeze Authority | Solana RPC | If enabled, the owner can freeze your tokens |
 | LP locked % | RugCheck | Unlocked liquidity can be pulled (rug pull) |

@@ -76,7 +76,8 @@ def format_card(report: TokenReport) -> str:
         lines.append("")
         lines.extend(f"⚠️ {html.escape(error)}" for error in report.errors)
     lines.append("")
-    lines.append(f"<i>Scanned in {report.elapsed:.2f}s</i>")
+    source = f" · market data: {html.escape(report.market_source)}" if report.market_source else ""
+    lines.append(f"<i>Scanned in {report.elapsed:.2f}s{source}</i>")
     return "\n".join(lines)
 
 
