@@ -120,22 +120,36 @@ def describe_error(error: BaseException) -> str:
     return f"connection error ({type(error).__name__})"
 
 
-async def scan_solana_token(address: str) -> TokenReport:
+def create_http_session() -> aiohttp.ClientSession:
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    connector = aiohttp.TCPConnector(ssl=ssl_context)
+    return aiohttp.ClientSession(connector=connector, timeout=REQUEST_TIMEOUT)
+
+
+async def fetch_all(session: aiohttp.ClientSession, address: str) -> list:
+    return await asyncio.gather(
+        fetch_dexscreener(session, address),
+        fetch_mint_account(session, address),
+        fetch_rugcheck(session, address),
+        return_exceptions=True,
+    )
+
+
+async def scan_solana_token(
+    address: str, session: aiohttp.ClientSession | None = None
+) -> TokenReport:
     report = TokenReport(address=address)
     if not is_valid_address(address):
         report.errors.append("Invalid Solana address")
         return report
 
     started = time.perf_counter()
-    ssl_context = ssl.create_default_context(cafile=certifi.where())
-    connector = aiohttp.TCPConnector(ssl=ssl_context)
-    async with aiohttp.ClientSession(connector=connector, timeout=REQUEST_TIMEOUT) as session:
-        dex_result, rpc_result, rug_result = await asyncio.gather(
-            fetch_dexscreener(session, address),
-            fetch_mint_account(session, address),
-            fetch_rugcheck(session, address),
-            return_exceptions=True,
-        )
+    if session is None:
+        async with create_http_session() as own_session:
+            results = await fetch_all(own_session, address)
+    else:
+        results = await fetch_all(session, address)
+    dex_result, rpc_result, rug_result = results
     report.elapsed = time.perf_counter() - started
 
     sources = [
@@ -168,11 +182,26 @@ def format_authority(value: str | None, loaded: bool) -> str:
     return f"🔴 enabled ({value[:4]}…{value[-4:]})"
 
 
-def format_lp(value: Decimal | None) -> str:
+LP_SAFE_PCT = Decimal("90")
+LP_WARNING_PCT = Decimal("50")
+LEVEL_MARKS = {"safe": "🟢", "warning": "🟡", "danger": "🔴"}
+
+
+def lp_risk_level(value: Decimal | None) -> str | None:
     if value is None:
+        return None
+    if value >= LP_SAFE_PCT:
+        return "safe"
+    if value >= LP_WARNING_PCT:
+        return "warning"
+    return "danger"
+
+
+def format_lp(value: Decimal | None) -> str:
+    level = lp_risk_level(value)
+    if level is None:
         return "—"
-    mark = "🟢" if value >= 90 else "🟡" if value >= 50 else "🔴"
-    return f"{mark} {value:.1f}%"
+    return f"{LEVEL_MARKS[level]} {value:.1f}%"
 
 
 def format_report(report: TokenReport) -> str:

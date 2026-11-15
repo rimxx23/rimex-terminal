@@ -1,0 +1,127 @@
+# Rimex Terminal
+
+[![tests](https://github.com/rimxx23/rimex-terminal/actions/workflows/tests.yml/badge.svg)](https://github.com/rimxx23/rimex-terminal/actions/workflows/tests.yml)
+
+Fast anti-scam scanner for Solana tokens. Send a contract address — get a security card in under a second.
+
+Available as a CLI tool, a Telegram bot ([@rimexscanner_bot](https://t.me/rimexscanner_bot)) and a Telegram Mini App.
+
+## Architecture
+
+```
+Telegram Mini App (webapp/index.html)
+        │  POST /api/scan  + X-Telegram-Init-Data
+        ▼
+FastAPI (api.py) ──┐
+Telegram bot (bot.py) ──┤──► scanner.py ──► DexScreener / Solana RPC / RugCheck
+CLI (scanner.py) ──┘
+```
+
+One scanning core, three interfaces.
+
+## What it checks
+
+| Check | Source | Why it matters |
+|---|---|---|
+| Price, liquidity, 24h volume | DexScreener | Market data from the most liquid pair |
+| Mint Authority | Solana RPC | If enabled, the owner can print unlimited tokens |
+| Freeze Authority | Solana RPC | If enabled, the owner can freeze your tokens |
+| LP locked % | RugCheck | Unlocked liquidity can be pulled (rug pull) |
+| Risk score and flags | RugCheck | Aggregated contract risks |
+
+All three sources are queried **in parallel** with `asyncio.gather`, so total scan time equals the slowest source, not the sum. If one source fails, the scan still returns everything else and marks missing data as `unknown` — never as safe.
+
+## Example
+
+```
+$ python scanner.py JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN
+Token:          JUP (Jupiter)
+Price:          $0.2603
+Liquidity:      $455,881.65
+Volume 24h:     $1,504,233.38
+Mint Authority: 🟢 disabled
+Freeze Auth.:   🟢 disabled
+LP locked:      🔴 1.5%
+RugCheck risk:  7 (lower is safer)
+Scan time:      0.45s
+```
+
+## Quick start
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+CLI:
+
+```bash
+python scanner.py <token address>
+```
+
+Telegram bot:
+
+```bash
+cp .env.example .env
+python bot.py
+```
+
+Set `BOT_TOKEN` in `.env` (get it from [@BotFather](https://t.me/BotFather)).
+
+Mini App API:
+
+```bash
+uvicorn api:app --port 8000
+```
+
+Telegram requires HTTPS for Mini Apps. Put the public HTTPS URL into `WEBAPP_URL` in `.env` and restart the bot — it will add an **X-Ray** menu button.
+
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+External APIs are mocked — tests run offline in about a second.
+
+### Docker
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+docker compose logs -f
+```
+
+## Tech stack
+
+- Python 3.14, `asyncio`, `aiohttp`
+- `aiogram` 3 — Telegram bot
+- FastAPI + Pydantic — Mini App API
+- Vanilla JS + Telegram WebApp SDK — Mini App frontend
+- pytest + pytest-asyncio, GitHub Actions CI
+- Docker / Docker Compose
+
+## Engineering notes
+
+- **Parallel I/O:** three HTTP sources via `asyncio.gather(..., return_exceptions=True)` — one failing source does not break the scan.
+- **Timeouts:** 3s for critical sources, 1.5s for optional RugCheck.
+- **Caching:** successful RugCheck responses are cached in memory for 5 minutes.
+- **Rate limiting:** 5 requests per user per minute (sliding window middleware) and max 10 concurrent scans (semaphore) to protect upstream APIs.
+- **Safety:** token names are HTML-escaped before rendering — scam tokens can put markup in their names. The Mini App renders data with `textContent` only.
+- **Mini App auth:** every API request carries Telegram `initData`, verified with HMAC-SHA256 using the bot token, and rejected if older than 24h.
+- **Money:** prices are `Decimal`, not `float`.
+
+## Roadmap
+
+- [x] CLI scanner
+- [x] Telegram bot
+- [x] Telegram Mini App
+- [ ] Deployment
+- [ ] Landing page
+- [ ] Web terminal (FastAPI + WebSockets)
+
+## Disclaimer
+
+This tool provides automated on-chain data, not financial advice. A clean result does not guarantee a token is safe.
