@@ -36,7 +36,6 @@ USER_RATE_LIMIT = 5
 USER_RATE_PERIOD = 60
 MAX_CONCURRENT_SCANS = 10
 
-router = Router()
 scan_slots = asyncio.Semaphore(MAX_CONCURRENT_SCANS)
 
 
@@ -91,7 +90,6 @@ def build_keyboard(address: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-@router.message(CommandStart())
 async def handle_start(message: Message, webapp_url: str | None) -> None:
     keyboard = None
     if webapp_url:
@@ -106,7 +104,6 @@ async def handle_start(message: Message, webapp_url: str | None) -> None:
     )
 
 
-@router.message(F.text)
 async def handle_address(message: Message, http_session: aiohttp.ClientSession) -> None:
     address = message.text.strip()
     if not is_valid_address(address):
@@ -117,7 +114,6 @@ async def handle_address(message: Message, http_session: aiohttp.ClientSession) 
     await status.edit_text(format_card(report), reply_markup=build_keyboard(address))
 
 
-@router.callback_query(F.data.startswith(REFRESH_PREFIX))
 async def handle_refresh(callback: CallbackQuery, http_session: aiohttp.ClientSession) -> None:
     address = callback.data.removeprefix(REFRESH_PREFIX)
     if not is_valid_address(address):
@@ -132,31 +128,55 @@ async def handle_refresh(callback: CallbackQuery, http_session: aiohttp.ClientSe
             raise
 
 
+def create_bot(token: str) -> Bot:
+    return Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+
+
+def create_router() -> Router:
+    router = Router()
+    router.message.register(handle_start, CommandStart())
+    router.message.register(handle_address, F.text)
+    router.callback_query.register(handle_refresh, F.data.startswith(REFRESH_PREFIX))
+    rate_limit = RateLimitMiddleware(SlidingWindowLimiter(USER_RATE_LIMIT, USER_RATE_PERIOD))
+    router.message.middleware(rate_limit)
+    router.callback_query.middleware(rate_limit)
+    return router
+
+
+def create_dispatcher(http_session: aiohttp.ClientSession, webapp_url: str | None) -> Dispatcher:
+    dispatcher = Dispatcher(http_session=http_session, webapp_url=webapp_url)
+    dispatcher.include_router(create_router())
+    return dispatcher
+
+
+def validate_webapp_url(webapp_url: str | None) -> str | None:
+    if webapp_url and not webapp_url.startswith("https://"):
+        raise RuntimeError("WEBAPP_URL must start with https:// (Telegram requirement).")
+    return webapp_url or None
+
+
+async def setup_menu_button(bot: Bot, webapp_url: str | None) -> None:
+    if webapp_url:
+        menu_button = MenuButtonWebApp(text="X-Ray", web_app=WebAppInfo(url=webapp_url))
+    else:
+        menu_button = MenuButtonDefault()
+    await bot.set_chat_menu_button(menu_button=menu_button)
+
+
 async def main() -> None:
     load_dotenv()
     token = os.getenv("BOT_TOKEN")
     if not token:
         raise RuntimeError("BOT_TOKEN is not set. Copy .env.example to .env and fill it in.")
-
-    webapp_url = os.getenv("WEBAPP_URL") or None
-    if webapp_url and not webapp_url.startswith("https://"):
-        raise RuntimeError("WEBAPP_URL must start with https:// (Telegram requirement).")
+    webapp_url = validate_webapp_url(os.getenv("WEBAPP_URL"))
 
     logging.basicConfig(level=logging.INFO)
-    bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    if webapp_url:
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(text="X-Ray", web_app=WebAppInfo(url=webapp_url))
-        )
-    else:
-        await bot.set_chat_menu_button(menu_button=MenuButtonDefault())
+    bot = create_bot(token)
+    await bot.delete_webhook()
+    await setup_menu_button(bot, webapp_url)
 
     async with create_http_session() as http_session:
-        dispatcher = Dispatcher(http_session=http_session, webapp_url=webapp_url)
-        rate_limit = RateLimitMiddleware(SlidingWindowLimiter(USER_RATE_LIMIT, USER_RATE_PERIOD))
-        router.message.middleware(rate_limit)
-        router.callback_query.middleware(rate_limit)
-        dispatcher.include_router(router)
+        dispatcher = create_dispatcher(http_session, webapp_url)
         await dispatcher.start_polling(bot)
 
 

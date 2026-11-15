@@ -86,6 +86,14 @@ pytest
 
 External APIs are mocked — tests run offline in about a second.
 
+### Production (webhook mode)
+
+In production the bot and the Mini App run in **one process**: FastAPI receives Telegram updates on `POST /telegram/webhook` and passes them to aiogram. Webhook mode turns on when `WEBHOOK_SECRET` and `PUBLIC_URL` are set (on Render `PUBLIC_URL` is taken from `RENDER_EXTERNAL_URL` automatically). Telegram signs every webhook request with `X-Telegram-Bot-Api-Secret-Token`; requests without the right secret get `403`.
+
+Deploy on Render: New → Web Service → this repo → Docker, health check path `/health`, env vars `BOT_TOKEN` and `WEBHOOK_SECRET`.
+
+`python bot.py` runs the bot in polling mode for local development and removes the webhook — redeploy (or restart) the service afterwards.
+
 ### Docker
 
 ```bash

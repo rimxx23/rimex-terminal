@@ -2,6 +2,9 @@ import os
 
 os.environ["BOT_TOKEN"] = "123456:TEST-TOKEN-FOR-PYTEST"
 os.environ["WEBAPP_URL"] = ""
+os.environ["PUBLIC_URL"] = ""
+os.environ["WEBHOOK_SECRET"] = ""
+os.environ.pop("RENDER_EXTERNAL_URL", None)
 
 import pytest
 
