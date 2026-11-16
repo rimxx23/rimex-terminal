@@ -8,6 +8,7 @@ import aiohttp
 from aiogram.types import Update
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from rimex import config
 from rimex.clients.common import create_http_session
@@ -24,7 +25,8 @@ from rimex.presentation.telegram.app import (
 from rimex.services.scanner import scan_solana_token
 
 WEBHOOK_PATH = "/telegram/webhook"
-WEBAPP_INDEX = Path(__file__).resolve().parents[3] / "webapp" / "index.html"
+WEBAPP_DIR = Path(__file__).resolve().parents[3] / "webapp"
+WEBAPP_INDEX = WEBAPP_DIR / "index.html"
 
 logger = logging.getLogger("rimex.api")
 
@@ -60,6 +62,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Rimex X-Ray API", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=WEBAPP_DIR), name="static")
 
 
 def get_http_session(request: Request) -> aiohttp.ClientSession:
