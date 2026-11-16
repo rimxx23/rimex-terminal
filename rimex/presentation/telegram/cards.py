@@ -3,10 +3,13 @@ import html
 from rimex.domain.address import short_address
 from rimex.domain.models import TokenReport
 from rimex.presentation.formatting import (
+    format_dev_holding,
     format_holders_count,
     format_honeypot,
+    format_known_token,
     format_lp,
     format_money,
+    format_pool_age,
     format_top10,
     honeypot_reasons,
 )
@@ -31,6 +34,7 @@ def format_card(report: TokenReport) -> str:
         f"💵 Price: <b>{format_money(report.price_usd)}</b>",
         f"💧 Liquidity: {format_money(report.liquidity_usd)}",
         f"📊 Volume 24h: {format_money(report.volume_24h)}",
+        f"⏱ Pool age: {format_pool_age(report.pool_created_at)}",
         "",
         "<b>X-Ray security</b>",
         f"Mint Authority: {format_authority_html(report.mint_authority, report.authorities_loaded)}",
@@ -39,8 +43,12 @@ def format_card(report: TokenReport) -> str:
         f"LP locked: {format_lp(report.lp_locked_pct)}",
         f"Top 10 holders: {format_top10(report.top10_holders_pct)}",
         f"Holders: {format_holders_count(report.holders_count)}",
+        f"Developer holds: {format_dev_holding(report.developer_holding_pct)}",
         f"RugCheck risk: {risk} (lower is safer)",
     ]
+    known = format_known_token(report.address)
+    if known:
+        lines.insert(2, html.escape(known))
     lines.extend(f"  · {html.escape(reason)}" for reason in honeypot_reasons(report))
     if report.risks:
         lines.append(f"Risks: {html.escape(', '.join(report.risks))}")

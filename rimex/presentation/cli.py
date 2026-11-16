@@ -3,10 +3,13 @@ import sys
 from rimex.domain.models import TokenReport
 from rimex.presentation.formatting import (
     format_authority,
+    format_dev_holding,
     format_holders_count,
     format_honeypot,
+    format_known_token,
     format_lp,
     format_money,
+    format_pool_age,
     format_top10,
     honeypot_reasons,
 )
@@ -21,14 +24,19 @@ def format_report(report: TokenReport) -> str:
         f"Price:          {format_money(report.price_usd)}",
         f"Liquidity:      {format_money(report.liquidity_usd)}",
         f"Volume 24h:     {format_money(report.volume_24h)}",
+        f"Pool age:       {format_pool_age(report.pool_created_at)}",
         f"Mint Authority: {format_authority(report.mint_authority, report.authorities_loaded)}",
         f"Freeze Auth.:   {format_authority(report.freeze_authority, report.authorities_loaded)}",
         f"Honeypot:       {format_honeypot(report)}",
         f"LP locked:      {format_lp(report.lp_locked_pct)}",
         f"Top 10 holders: {format_top10(report.top10_holders_pct)}",
         f"Holders:        {format_holders_count(report.holders_count)}",
+        f"Developer:      {format_dev_holding(report.developer_holding_pct)}",
         f"RugCheck risk:  {risk} (lower is safer)",
     ]
+    known = format_known_token(report.address)
+    if known:
+        lines.insert(1, known)
     for reason in honeypot_reasons(report):
         lines.append(f"  · {reason}")
     if report.risks:

@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import aiohttp
 
 from rimex.clients.common import to_decimal
@@ -24,3 +26,10 @@ def apply(report: TokenReport, pairs: list) -> None:
     report.price_usd = to_decimal(pair.get("priceUsd"))
     report.liquidity_usd = to_decimal((pair.get("liquidity") or {}).get("usd"))
     report.volume_24h = to_decimal((pair.get("volume") or {}).get("h24"))
+    report.pool_created_at = from_millis(pair.get("pairCreatedAt"))
+
+
+def from_millis(value) -> datetime | None:
+    if not value:
+        return None
+    return datetime.fromtimestamp(int(value) / 1000, UTC)

@@ -47,6 +47,8 @@ HONEYPOT_FLAGS = {"yes": True, "no": False}
 def apply_holders(report: TokenReport, data: dict) -> None:
     attributes = _attributes(data)
     report.gt_honeypot = HONEYPOT_FLAGS.get(str(attributes.get("is_honeypot")).lower())
+    report.developer_address = attributes.get("developer_address")
+    report.developer_holding_pct = to_decimal(attributes.get("developer_holding_percentage"))
     holders = attributes.get("holders") or {}
     distribution = holders.get("distribution_percentage") or {}
     report.holders_count = holders.get("count")
