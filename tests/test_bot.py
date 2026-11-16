@@ -2,16 +2,15 @@ from decimal import Decimal
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
-import bot
-from bot import (
+from rimex.domain.address import short_address
+from rimex.domain.models import TokenReport
+from rimex.presentation.telegram import handlers
+from rimex.presentation.telegram.cards import format_card, format_open_app_message
+from rimex.presentation.telegram.keyboards import (
     REFRESH_PREFIX,
     build_keyboard,
     build_open_app_keyboard,
-    format_card,
-    format_open_app_message,
-    short_address,
 )
-from scanner import TokenReport
 from tests.conftest import BONK
 
 
@@ -150,10 +149,10 @@ async def test_address_message_links_to_mini_app_without_scanning(monkeypatch):
     async def must_not_scan(*args, **kwargs):
         raise AssertionError("bot must not scan on the server when Mini App is configured")
 
-    monkeypatch.setattr(bot, "run_scan", must_not_scan)
+    monkeypatch.setattr(handlers, "run_scan", must_not_scan)
     message = FakeMessage(BONK)
 
-    await bot.handle_address(message, http_session=None, webapp_url=WEBAPP_URL)
+    await handlers.handle_address(message, http_session=None, webapp_url=WEBAPP_URL)
 
     text, keyboard = message.answers[0]
     assert short_address(BONK) in text
@@ -177,9 +176,9 @@ async def test_address_message_scans_when_no_mini_app(monkeypatch):
         async def answer(self, text, reply_markup=None):
             return status
 
-    monkeypatch.setattr(bot, "run_scan", fake_scan)
+    monkeypatch.setattr(handlers, "run_scan", fake_scan)
 
-    await bot.handle_address(ScanningMessage(BONK), http_session=None, webapp_url=None)
+    await handlers.handle_address(ScanningMessage(BONK), http_session=None, webapp_url=None)
 
     assert scanned == [BONK]
     assert "Bonk" in status.text
@@ -188,6 +187,6 @@ async def test_address_message_scans_when_no_mini_app(monkeypatch):
 async def test_invalid_address_gets_hint():
     message = FakeMessage("hello")
 
-    await bot.handle_address(message, http_session=None, webapp_url=WEBAPP_URL)
+    await handlers.handle_address(message, http_session=None, webapp_url=WEBAPP_URL)
 
     assert "doesn't look like a Solana token address" in message.answers[0][0]

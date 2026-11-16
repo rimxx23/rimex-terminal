@@ -4,17 +4,14 @@ from decimal import Decimal
 import aiohttp
 import pytest
 
-from scanner import (
-    TokenReport,
-    apply_dexscreener,
-    apply_mint_account,
-    apply_rugcheck,
-    describe_error,
-    format_money,
-    is_valid_address,
-    lp_risk_level,
-    top10_risk_level,
-)
+from rimex.clients.common import describe_error
+from rimex.clients.dexscreener import apply as apply_dexscreener
+from rimex.clients.rugcheck import apply as apply_rugcheck
+from rimex.clients.solana_rpc import apply_mint_account
+from rimex.domain.address import is_valid_address
+from rimex.domain.models import TokenReport
+from rimex.domain.risk import lp_risk_level, top10_risk_level
+from rimex.presentation.formatting import format_money
 from tests.conftest import BONK
 
 

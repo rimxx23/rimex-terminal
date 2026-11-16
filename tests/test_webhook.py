@@ -2,7 +2,8 @@ import pytest
 from aiogram import Bot
 from fastapi.testclient import TestClient
 
-import api
+from rimex import config
+from rimex.presentation.api import app as api
 
 SECRET = "test-webhook-secret"
 
@@ -37,7 +38,7 @@ def client():
 
 @pytest.fixture
 def webhook_client(monkeypatch, client):
-    monkeypatch.setattr(api, "WEBHOOK_SECRET", SECRET)
+    monkeypatch.setattr(config, "WEBHOOK_SECRET", SECRET)
     dispatcher = FakeDispatcher()
     client.app.state.dispatcher = dispatcher
     return client, dispatcher
@@ -100,9 +101,9 @@ def test_lifespan_registers_webhook_and_menu(monkeypatch):
 
     monkeypatch.setattr(Bot, "set_webhook", fake_set_webhook)
     monkeypatch.setattr(Bot, "set_chat_menu_button", fake_set_menu)
-    monkeypatch.setattr(api, "PUBLIC_URL", "https://rimex.onrender.com")
-    monkeypatch.setattr(api, "WEBAPP_URL", "https://rimex.onrender.com")
-    monkeypatch.setattr(api, "WEBHOOK_SECRET", SECRET)
+    monkeypatch.setattr(config, "PUBLIC_URL", "https://rimex.onrender.com")
+    monkeypatch.setattr(config, "WEBAPP_URL", "https://rimex.onrender.com")
+    monkeypatch.setattr(config, "WEBHOOK_SECRET", SECRET)
 
     with TestClient(api.app):
         pass
