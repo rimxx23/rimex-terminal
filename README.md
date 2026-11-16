@@ -27,7 +27,9 @@ rimex/
     telegram/     aiogram bot: handlers, cards, keyboards, middlewares
     api/          FastAPI: Mini App API, Telegram webhook, initData auth
   config.py       settings from environment
-webapp/           Mini App frontend (single HTML file)
+webapp/           Mini App frontend: vanilla JS ES modules, no build step
+  js/             api, telegram, fallback, levels (verdict), history, views/
+  css/
 ```
 
 `tests/test_architecture.py` fails if an inner layer imports an outer one (e.g. FastAPI in `services`).
@@ -106,6 +108,12 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
+Mini App logic (verdict, history, device fallbacks) is tested with Node's built-in runner:
+
+```bash
+node --test "tests/js/*.test.mjs"
+```
+
 External APIs are mocked — tests run offline in about a second.
 
 ### Production (webhook mode)
@@ -134,6 +142,8 @@ docker compose logs -f
 - Docker / Docker Compose
 
 ## Engineering notes
+
+- **Mini App:** overall verdict on top of every scan, profile with the last 10 scans stored in Telegram CloudStorage (synced across the user's devices, validated on load).
 
 - **Parallel I/O:** three HTTP sources via `asyncio.gather(..., return_exceptions=True)` — one failing source does not break the scan.
 - **Timeouts:** 3s for critical sources, 1.5s for optional RugCheck.

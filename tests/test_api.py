@@ -142,3 +142,20 @@ def test_rate_limit_per_user(client):
     assert blocked.status_code == 429
     assert int(blocked.headers["Retry-After"]) > 0
     assert other_user.status_code == 200
+
+
+def test_mini_app_assets_are_served(client):
+    page = client.get("/")
+    script = client.get("/static/js/main.js")
+    styles = client.get("/static/css/styles.css")
+
+    assert '<script type="module" src="/static/js/main.js">' in page.text
+    assert script.status_code == 200
+    assert "javascript" in script.headers["content-type"]
+    assert styles.status_code == 200
+    assert "text/css" in styles.headers["content-type"]
+
+
+def test_static_does_not_expose_files_outside_webapp(client):
+    assert client.get("/static/../.env").status_code == 404
+    assert client.get("/static/%2e%2e/.env").status_code == 404

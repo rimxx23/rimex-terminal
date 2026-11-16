@@ -22,3 +22,15 @@ jobs:
 
       - name: Run tests
         run: pytest -v
+
+  mini-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run Mini App tests
+        run: node --test "tests/js/*.test.mjs"
