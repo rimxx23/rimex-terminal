@@ -46,9 +46,12 @@ In production the bot does not scan in chat: it replies with an **Open in X-Ray*
 | Honeypot signs | Solana RPC (Token-2022 extensions), GeckoTerminal | Transfer hook, permanent delegate, freeze authority or a high transfer fee can stop you from selling |
 | LP locked % | RugCheck | Unlocked liquidity can be pulled (rug pull) |
 | Top 10 holders %, holder count | GeckoTerminal | A few wallets holding most of the supply can dump the price |
+| Developer holding % | GeckoTerminal | A large developer bag can be dumped on buyers (🟡 from 5%, 🔴 from 20%) |
+| Pool age | DexScreener | Fresh pools are the riskiest (🔴 under 1 day, 🟡 under 7 days) |
+| Known tokens | Built-in list (USDC, USDT, PYUSD) | Regulated stablecoins keep freeze powers by design — shown as 🟡 with the issuer name instead of 🔴 |
 | Risk score and flags | RugCheck | Aggregated contract risks |
 
-All three sources are queried **in parallel** with `asyncio.gather`, so total scan time equals the slowest source, not the sum. If one source fails, the scan still returns everything else and marks missing data as `unknown` — never as safe.
+All sources are queried **in parallel** with `asyncio.gather`, so total scan time equals the slowest source, not the sum. If one source fails, the scan still returns everything else and marks missing data as `unknown` — never as safe.
 
 ## Example
 

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -14,6 +15,9 @@ class TokenReport:
     liquidity_usd: Decimal | None = None
     volume_24h: Decimal | None = None
     market_source: str | None = None
+    pool_created_at: datetime | None = None
+    developer_address: str | None = None
+    developer_holding_pct: Decimal | None = None
     authorities_loaded: bool = False
     mint_authority: str | None = None
     freeze_authority: str | None = None
