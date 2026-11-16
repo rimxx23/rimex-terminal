@@ -48,3 +48,21 @@ def apply_mint_account(report: TokenReport, data: dict) -> None:
     report.authorities_loaded = True
     report.mint_authority = info.get("mintAuthority")
     report.freeze_authority = info.get("freezeAuthority")
+    report.token_program = account_data.get("program")
+    apply_extensions(report, info.get("extensions") or [])
+
+
+def apply_extensions(report: TokenReport, extensions: list[dict]) -> None:
+    states = {item.get("extension"): item.get("state") or {} for item in extensions}
+
+    fee_config = states.get("transferFeeConfig")
+    if fee_config is not None:
+        fees = [
+            (fee_config.get(key) or {}).get("transferFeeBasisPoints") or 0
+            for key in ("olderTransferFee", "newerTransferFee")
+        ]
+        report.transfer_fee_bps = max(fees)
+        report.transfer_fee_mutable = bool(fee_config.get("transferFeeConfigAuthority"))
+
+    report.transfer_hook_program = (states.get("transferHook") or {}).get("programId")
+    report.permanent_delegate = (states.get("permanentDelegate") or {}).get("delegate")

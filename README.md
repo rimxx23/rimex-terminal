@@ -43,6 +43,7 @@ In production the bot does not scan in chat: it replies with an **Open in X-Ray*
 | Price, liquidity, 24h volume | DexScreener, fallback GeckoTerminal | Market data; GeckoTerminal is used when DexScreener is rate-limited or has no pairs |
 | Mint Authority | Solana RPC | If enabled, the owner can print unlimited tokens |
 | Freeze Authority | Solana RPC | If enabled, the owner can freeze your tokens |
+| Honeypot signs | Solana RPC (Token-2022 extensions), GeckoTerminal | Transfer hook, permanent delegate, freeze authority or a high transfer fee can stop you from selling |
 | LP locked % | RugCheck | Unlocked liquidity can be pulled (rug pull) |
 | Top 10 holders %, holder count | GeckoTerminal | A few wallets holding most of the supply can dump the price |
 | Risk score and flags | RugCheck | Aggregated contract risks |

@@ -4,7 +4,7 @@ from decimal import Decimal
 from pydantic import BaseModel
 
 from rimex.domain.models import RiskLevel, TokenReport
-from rimex.domain.risk import lp_risk_level, top10_risk_level
+from rimex.domain.risk import assess_honeypot, lp_risk_level, top10_risk_level
 
 
 class ScanRequest(BaseModel):
@@ -22,6 +22,14 @@ class ScanResponse(BaseModel):
     authorities_loaded: bool
     mint_authority: str | None
     freeze_authority: str | None
+    token_program: str | None
+    transfer_fee_bps: int | None
+    transfer_fee_mutable: bool
+    transfer_hook_program: str | None
+    permanent_delegate: str | None
+    gt_honeypot: bool | None
+    honeypot_level: RiskLevel | None
+    honeypot_reasons: list[str]
     lp_locked_pct: Decimal | None
     lp_level: RiskLevel | None
     risk_score: int | None
@@ -34,8 +42,11 @@ class ScanResponse(BaseModel):
 
     @classmethod
     def from_report(cls, report: TokenReport) -> "ScanResponse":
+        honeypot = assess_honeypot(report)
         return cls(
             **asdict(report),
+            honeypot_level=honeypot.level,
+            honeypot_reasons=honeypot.reasons,
             lp_level=lp_risk_level(report.lp_locked_pct),
             top10_level=top10_risk_level(report.top10_holders_pct),
         )

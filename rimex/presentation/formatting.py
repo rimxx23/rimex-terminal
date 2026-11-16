@@ -1,7 +1,7 @@
 from decimal import Decimal
 
-from rimex.domain.models import RiskLevel
-from rimex.domain.risk import lp_risk_level, top10_risk_level
+from rimex.domain.models import RiskLevel, TokenReport
+from rimex.domain.risk import assess_honeypot, lp_risk_level, top10_risk_level
 
 LEVEL_MARKS: dict[RiskLevel, str] = {"safe": "🟢", "warning": "🟡", "danger": "🔴"}
 
@@ -38,3 +38,21 @@ def format_top10(value: Decimal | None) -> str:
 
 def format_holders_count(value: int | None) -> str:
     return "—" if value is None else f"{value:,}"
+
+
+HONEYPOT_LABELS: dict[RiskLevel, str] = {
+    "safe": "no sell restrictions found",
+    "warning": "possible sell restrictions",
+    "danger": "sell restrictions",
+}
+
+
+def format_honeypot(report: TokenReport) -> str:
+    assessment = assess_honeypot(report)
+    if assessment.level is None:
+        return "—"
+    return f"{LEVEL_MARKS[assessment.level]} {HONEYPOT_LABELS[assessment.level]}"
+
+
+def honeypot_reasons(report: TokenReport) -> list[str]:
+    return assess_honeypot(report).reasons

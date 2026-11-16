@@ -41,8 +41,13 @@ def apply_token(report: TokenReport, data: dict) -> None:
     report.volume_24h = to_decimal((attributes.get("volume_usd") or {}).get("h24"))
 
 
+HONEYPOT_FLAGS = {"yes": True, "no": False}
+
+
 def apply_holders(report: TokenReport, data: dict) -> None:
-    holders = _attributes(data).get("holders") or {}
+    attributes = _attributes(data)
+    report.gt_honeypot = HONEYPOT_FLAGS.get(str(attributes.get("is_honeypot")).lower())
+    holders = attributes.get("holders") or {}
     distribution = holders.get("distribution_percentage") or {}
     report.holders_count = holders.get("count")
     report.top10_holders_pct = to_decimal(distribution.get("top_10"))
