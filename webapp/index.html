@@ -125,6 +125,7 @@
       <h2>X-Ray security</h2>
       <div class="row"><span class="label">Mint Authority</span><span class="value" data-field="mint"></span></div>
       <div class="row"><span class="label">Freeze Authority</span><span class="value" data-field="freeze"></span></div>
+      <div class="row"><span class="label">Honeypot</span><span class="value" data-field="honeypot"></span></div>
       <div class="row"><span class="label">LP locked</span><span class="value" data-field="lp"></span></div>
       <div class="row"><span class="label">Top 10 holders</span><span class="value" data-field="top10"></span></div>
       <div class="row"><span class="label">Holders</span><span class="value" data-field="holders"></span></div>
@@ -187,6 +188,8 @@
       setField(view, "mint", ...authority(report.mint_authority, report.authorities_loaded));
       setField(view, "freeze", ...authority(report.freeze_authority, report.authorities_loaded));
       setField(view, "lp", report.lp_locked_pct === null ? "—" : `${Number(report.lp_locked_pct).toFixed(1)}%`, report.lp_level);
+      const HONEYPOT_LABELS = { safe: "not found", warning: "possible", danger: "sell restrictions" };
+      setField(view, "honeypot", report.honeypot_level ? HONEYPOT_LABELS[report.honeypot_level] : "—", report.honeypot_level);
       setField(view, "top10", report.top10_holders_pct === null ? "—" : `${Number(report.top10_holders_pct).toFixed(1)}%`, report.top10_level);
       setField(view, "holders", report.holders_count === null ? "—" : report.holders_count.toLocaleString("en-US"));
       setField(view, "risk", report.risk_score === null ? "—" : `${report.risk_score} (lower is safer)`);
@@ -194,7 +197,8 @@
       setField(view, "elapsed", `Scanned in ${report.elapsed.toFixed(2)}s${source}`);
 
       const notices = view.querySelector('[data-field="notices"]');
-      for (const text of [...report.risks.map((risk) => `Risk: ${risk}`), ...report.errors]) {
+      const honeypotNotes = (report.honeypot_reasons ?? []).map((reason) => `Honeypot: ${reason}`);
+      for (const text of [...honeypotNotes, ...report.risks.map((risk) => `Risk: ${risk}`), ...report.errors]) {
         const div = document.createElement("div");
         div.className = "notice";
         div.textContent = "⚠ " + text;
@@ -342,7 +346,7 @@
         }
         const report = await fillMissingData(data);
         renderReport(report);
-        const dangerous = report.mint_authority || report.freeze_authority || report.lp_level === "danger" || report.top10_level === "danger";
+        const dangerous = report.mint_authority || report.freeze_authority || report.lp_level === "danger" || report.top10_level === "danger" || report.honeypot_level === "danger";
         tg.HapticFeedback.notificationOccurred(dangerous ? "warning" : "success");
       } catch {
         showMessage("error", "Network error. Try again.");

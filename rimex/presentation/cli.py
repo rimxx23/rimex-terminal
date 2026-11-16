@@ -4,9 +4,11 @@ from rimex.domain.models import TokenReport
 from rimex.presentation.formatting import (
     format_authority,
     format_holders_count,
+    format_honeypot,
     format_lp,
     format_money,
     format_top10,
+    honeypot_reasons,
 )
 from rimex.services.scanner import scan_solana_token
 
@@ -21,11 +23,14 @@ def format_report(report: TokenReport) -> str:
         f"Volume 24h:     {format_money(report.volume_24h)}",
         f"Mint Authority: {format_authority(report.mint_authority, report.authorities_loaded)}",
         f"Freeze Auth.:   {format_authority(report.freeze_authority, report.authorities_loaded)}",
+        f"Honeypot:       {format_honeypot(report)}",
         f"LP locked:      {format_lp(report.lp_locked_pct)}",
         f"Top 10 holders: {format_top10(report.top10_holders_pct)}",
         f"Holders:        {format_holders_count(report.holders_count)}",
         f"RugCheck risk:  {risk} (lower is safer)",
     ]
+    for reason in honeypot_reasons(report):
+        lines.append(f"  · {reason}")
     if report.risks:
         lines.append(f"Risks:          {', '.join(report.risks)}")
     for error in report.errors:

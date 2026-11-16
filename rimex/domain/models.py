@@ -17,6 +17,12 @@ class TokenReport:
     authorities_loaded: bool = False
     mint_authority: str | None = None
     freeze_authority: str | None = None
+    token_program: str | None = None
+    transfer_fee_bps: int | None = None
+    transfer_fee_mutable: bool = False
+    transfer_hook_program: str | None = None
+    permanent_delegate: str | None = None
+    gt_honeypot: bool | None = None
     lp_locked_pct: Decimal | None = None
     risk_score: int | None = None
     holders_count: int | None = None
