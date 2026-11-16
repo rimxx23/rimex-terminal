@@ -1,7 +1,7 @@
 import pytest
 
-import ratelimit
-from ratelimit import SlidingWindowLimiter
+from rimex.presentation import ratelimit
+from rimex.presentation.ratelimit import SlidingWindowLimiter
 
 
 class FakeClock:

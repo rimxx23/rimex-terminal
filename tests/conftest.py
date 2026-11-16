@@ -8,16 +8,16 @@ os.environ.pop("RENDER_EXTERNAL_URL", None)
 
 import pytest
 
-import scanner
+from rimex.clients import rugcheck
 
 BONK = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
 
 
 @pytest.fixture(autouse=True)
 def clear_rugcheck_cache():
-    scanner._rugcheck_cache.clear()
+    rugcheck._cache.clear()
     yield
-    scanner._rugcheck_cache.clear()
+    rugcheck._cache.clear()
 
 
 @pytest.fixture

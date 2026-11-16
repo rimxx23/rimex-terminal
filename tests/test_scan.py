@@ -4,8 +4,8 @@ from decimal import Decimal
 import aiohttp
 import pytest
 
-import scanner
-from scanner import scan_solana_token
+from rimex.clients import dexscreener, geckoterminal, rugcheck, solana_rpc
+from rimex.services.scanner import scan_solana_token
 from tests.conftest import BONK
 
 
@@ -43,8 +43,8 @@ def no_real_geckoterminal(monkeypatch):
     async def blocked(session, address):
         raise AssertionError("GeckoTerminal must be mocked in tests")
 
-    monkeypatch.setattr(scanner, "fetch_geckoterminal", blocked)
-    monkeypatch.setattr(scanner, "fetch_holders", blocked)
+    monkeypatch.setattr(geckoterminal, "fetch_token", blocked)
+    monkeypatch.setattr(geckoterminal, "fetch_info", blocked)
 
 
 @pytest.fixture
@@ -68,11 +68,11 @@ def fake_sources(monkeypatch, dexscreener_pairs, mint_account, rugcheck_summary)
 
         return fetch
 
-    monkeypatch.setattr(scanner, "fetch_dexscreener", make_fetcher("dex"))
-    monkeypatch.setattr(scanner, "fetch_geckoterminal", make_fetcher("gecko"))
-    monkeypatch.setattr(scanner, "fetch_mint_account", make_fetcher("rpc"))
-    monkeypatch.setattr(scanner, "fetch_rugcheck", make_fetcher("rug"))
-    monkeypatch.setattr(scanner, "fetch_holders", make_fetcher("holders"))
+    monkeypatch.setattr(dexscreener, "fetch", make_fetcher("dex"))
+    monkeypatch.setattr(geckoterminal, "fetch_token", make_fetcher("gecko"))
+    monkeypatch.setattr(solana_rpc, "fetch_mint_account", make_fetcher("rpc"))
+    monkeypatch.setattr(rugcheck, "fetch", make_fetcher("rug"))
+    monkeypatch.setattr(geckoterminal, "fetch_info", make_fetcher("holders"))
     return results, calls
 
 
@@ -201,10 +201,10 @@ async def test_sources_run_in_parallel(monkeypatch):
         await asyncio.sleep(0.2)
         return [{"baseToken": {"symbol": "X"}}]
 
-    monkeypatch.setattr(scanner, "fetch_dexscreener", slow_list)
-    monkeypatch.setattr(scanner, "fetch_mint_account", slow)
-    monkeypatch.setattr(scanner, "fetch_rugcheck", slow)
-    monkeypatch.setattr(scanner, "fetch_holders", slow)
+    monkeypatch.setattr(dexscreener, "fetch", slow_list)
+    monkeypatch.setattr(solana_rpc, "fetch_mint_account", slow)
+    monkeypatch.setattr(rugcheck, "fetch", slow)
+    monkeypatch.setattr(geckoterminal, "fetch_info", slow)
 
     report = await scan_solana_token(BONK, session=object())
 
@@ -261,10 +261,10 @@ async def test_rpc_falls_back_to_next_node(monkeypatch, mint_account):
     monkeypatch.delenv("SOLANA_RPC_URL", raising=False)
     session = FakeRpcSession([FailingResponse(403), FakeResponse(mint_account)])
 
-    data = await scanner.fetch_mint_account(session, BONK)
+    data = await solana_rpc.fetch_mint_account(session, BONK)
 
     assert data == mint_account
-    assert session.urls == [scanner.DEFAULT_SOLANA_RPC_URL, *scanner.FALLBACK_SOLANA_RPC_URLS]
+    assert session.urls == [solana_rpc.DEFAULT_URL, *solana_rpc.FALLBACK_URLS]
 
 
 async def test_rpc_error_body_triggers_fallback(monkeypatch, mint_account):
@@ -272,7 +272,7 @@ async def test_rpc_error_body_triggers_fallback(monkeypatch, mint_account):
     rate_limited = FakeResponse({"jsonrpc": "2.0", "error": {"code": 429, "message": "Too many requests"}})
     session = FakeRpcSession([rate_limited, FakeResponse(mint_account)])
 
-    assert await scanner.fetch_mint_account(session, BONK) == mint_account
+    assert await solana_rpc.fetch_mint_account(session, BONK) == mint_account
 
 
 async def test_rpc_raises_when_all_nodes_fail(monkeypatch):
@@ -280,14 +280,14 @@ async def test_rpc_raises_when_all_nodes_fail(monkeypatch):
     session = FakeRpcSession([FailingResponse(403), FailingResponse(429)])
 
     with pytest.raises(aiohttp.ClientResponseError):
-        await scanner.fetch_mint_account(session, BONK)
+        await solana_rpc.fetch_mint_account(session, BONK)
 
 
 async def test_custom_rpc_url_is_tried_first(monkeypatch, mint_account):
     monkeypatch.setenv("SOLANA_RPC_URL", "https://mainnet.helius-rpc.com/?api-key=test")
     session = FakeRpcSession([FakeResponse(mint_account)])
 
-    await scanner.fetch_mint_account(session, BONK)
+    await solana_rpc.fetch_mint_account(session, BONK)
 
     assert session.urls == ["https://mainnet.helius-rpc.com/?api-key=test"]
 
@@ -295,8 +295,8 @@ async def test_custom_rpc_url_is_tried_first(monkeypatch, mint_account):
 async def test_rugcheck_response_is_cached(rugcheck_summary):
     session = FakeSession(rugcheck_summary)
 
-    first = await scanner.fetch_rugcheck(session, BONK)
-    second = await scanner.fetch_rugcheck(session, BONK)
+    first = await rugcheck.fetch(session, BONK)
+    second = await rugcheck.fetch(session, BONK)
 
     assert first == second == rugcheck_summary
     assert session.requests == 1
@@ -305,10 +305,10 @@ async def test_rugcheck_response_is_cached(rugcheck_summary):
 async def test_rugcheck_cache_expires(monkeypatch, rugcheck_summary):
     session = FakeSession(rugcheck_summary)
     now = [1000.0]
-    monkeypatch.setattr(scanner.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(rugcheck.time, "monotonic", lambda: now[0])
 
-    await scanner.fetch_rugcheck(session, BONK)
-    now[0] += scanner.RUGCHECK_CACHE_TTL + 1
-    await scanner.fetch_rugcheck(session, BONK)
+    await rugcheck.fetch(session, BONK)
+    now[0] += rugcheck.CACHE_TTL + 1
+    await rugcheck.fetch(session, BONK)
 
     assert session.requests == 2

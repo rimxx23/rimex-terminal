@@ -4,7 +4,7 @@ from typing import Any
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
-from ratelimit import SlidingWindowLimiter
+from rimex.presentation.ratelimit import SlidingWindowLimiter
 
 
 class RateLimitMiddleware(BaseMiddleware):

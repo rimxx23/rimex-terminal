@@ -9,9 +9,9 @@ from urllib.parse import urlencode
 import pytest
 from fastapi.testclient import TestClient
 
-import api
-from ratelimit import SlidingWindowLimiter
-from scanner import TokenReport
+from rimex.domain.models import TokenReport
+from rimex.presentation.api import app as api
+from rimex.presentation.ratelimit import SlidingWindowLimiter
 from tests.conftest import BONK
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]

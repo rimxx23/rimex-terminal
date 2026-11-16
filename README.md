@@ -8,14 +8,29 @@ Available as a CLI tool, a Telegram bot ([@rimexscanner_bot](https://t.me/rimexs
 
 ## Architecture
 
+Layered architecture — dependencies point inward only:
+
 ```
-Telegram Mini App (webapp/index.html)
-        │  POST /api/scan  + X-Telegram-Init-Data
-        ▼
-FastAPI (api.py) ──┐
-Telegram bot (bot.py) ──┤──► scanner.py ──► DexScreener / Solana RPC / RugCheck
-CLI (scanner.py) ──┘
+presentation ──► services ──► clients ──► domain
+  CLI, bot,       scan            DexScreener,    TokenReport,
+  FastAPI         orchestration   GeckoTerminal,  risk rules,
+                                  RugCheck, RPC   address
 ```
+
+```
+rimex/
+  domain/         models.py, risk.py, address.py   — no I/O, no frameworks
+  clients/        one module per external API: fetch + parse into TokenReport
+  services/       scanner.py — parallel requests, fallbacks, error handling
+  presentation/
+    cli.py        python -m rimex <address>
+    telegram/     aiogram bot: handlers, cards, keyboards, middlewares
+    api/          FastAPI: Mini App API, Telegram webhook, initData auth
+  config.py       settings from environment
+webapp/           Mini App frontend (single HTML file)
+```
+
+`tests/test_architecture.py` fails if an inner layer imports an outer one (e.g. FastAPI in `services`).
 
 One scanning core, three interfaces.
 
@@ -37,7 +52,7 @@ All three sources are queried **in parallel** with `asyncio.gather`, so total sc
 ## Example
 
 ```
-$ python scanner.py JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN
+$ python -m rimex JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN
 Token:          JUP (Jupiter)
 Price:          $0.2603
 Liquidity:      $455,881.65
@@ -60,14 +75,14 @@ pip install -r requirements.txt
 CLI:
 
 ```bash
-python scanner.py <token address>
+python -m rimex <token address>
 ```
 
 Telegram bot:
 
 ```bash
 cp .env.example .env
-python bot.py
+python -m rimex.presentation.telegram
 ```
 
 Set `BOT_TOKEN` in `.env` (get it from [@BotFather](https://t.me/BotFather)).
@@ -75,7 +90,7 @@ Set `BOT_TOKEN` in `.env` (get it from [@BotFather](https://t.me/BotFather)).
 Mini App API:
 
 ```bash
-uvicorn api:app --port 8000
+uvicorn rimex.presentation.api.app:app --port 8000
 ```
 
 Telegram requires HTTPS for Mini Apps. Put the public HTTPS URL into `WEBAPP_URL` in `.env` and restart the bot — it will add an **X-Ray** menu button.
@@ -95,7 +110,7 @@ In production the bot and the Mini App run in **one process**: FastAPI receives 
 
 Deploy on Render: New → Web Service → this repo → Docker, health check path `/health`, env vars `BOT_TOKEN` and `WEBHOOK_SECRET`.
 
-`python bot.py` runs the bot in polling mode for local development and removes the webhook — redeploy (or restart) the service afterwards.
+`python -m rimex.presentation.telegram` runs the bot in polling mode for local development and removes the webhook — redeploy (or restart) the service afterwards.
 
 ### Docker
 
