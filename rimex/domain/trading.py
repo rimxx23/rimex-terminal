@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Literal
 
 PRICE_SCALE = 100
 SIZE_SCALE = 1000
@@ -7,6 +8,11 @@ START_CASH = 10_000 * CASH_SCALE
 START_SOL = 5 * SIZE_SCALE
 MAKER_SIZE = 5 * SIZE_SCALE
 QUOTE_TTL = 15
+Asset = Literal["SOL", "USDT"]
+
+
+def other_asset(asset: Asset) -> Asset:
+    return "USDT" if asset == "SOL" else "SOL"
 
 
 class TradeRejected(ValueError):

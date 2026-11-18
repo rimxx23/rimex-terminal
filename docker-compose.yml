@@ -5,6 +5,7 @@ services:
     build: .
     environment:
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-}
+      JUPITER_API_KEY: ${JUPITER_API_KEY:-}
       DEMO_DB_PATH: ${DEMO_DB_PATH:-/app/data/rimex-demo.sqlite3}
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
     restart: unless-stopped

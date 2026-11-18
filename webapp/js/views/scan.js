@@ -4,6 +4,11 @@ import { computeVerdict } from "../levels.js";
 
 const HONEYPOT_LABELS = { safe: "not found", warning: "possible", danger: "sell restrictions" };
 
+const SWAP_ASSETS = {
+  So11111111111111111111111111111111111111112: "SOL",
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: "USDT",
+};
+
 const EXTERNAL_LINKS = {
   DexScreener: (address) => `https://dexscreener.com/solana/${address}`,
   RugCheck: (address) => `https://rugcheck.xyz/tokens/${address}`,
@@ -72,6 +77,10 @@ function renderLinks(view, address, onOpenLink) {
       });
     })
   );
+  if (Object.hasOwn(SWAP_ASSETS, address)) {
+    const query = new URLSearchParams({ from: SWAP_ASSETS[address] });
+    links.append(el("a", { text: "Demo swap", attrs: { href: `/swap?${query}` } }));
+  }
 }
 
 export function renderReport(container, template, report, { onOpenLink, onCopy }) {

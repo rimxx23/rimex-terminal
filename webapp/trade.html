@@ -9,19 +9,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="icon" type="image/jpeg" href="/static/brand/rimex-terminal.jpg">
-  <link rel="stylesheet" href="/static/css/site.css?v=5">
-  <script type="module" src="/static/js/trade.js?v=5"></script>
+  <link rel="stylesheet" href="/static/css/site.css?v=9">
+  <script type="module" src="/static/js/trade.js?v=9"></script>
 </head>
-<body class="trade-site">
-  <nav class="site-nav" aria-label="Rimex Terminal">
-    <a class="site-brand" href="/"><span class="brand-mark" aria-hidden="true"></span> RIMEX TERMINAL</a>
-    <div class="nav-controls">
-      <a href="/">Scanner</a><a href="/trade" aria-current="page">Demo trading</a>
-      <span class="account-controls" data-account hidden>
-        <span data-username></span><button type="button">Sign out</button><span role="status"></span>
-      </span>
-    </div>
-  </nav>
+<body class="trade-site workspace">
+  <!-- workspace navigation -->
   <p id="web-auth-status" role="status" hidden></p>
   <main class="terminal" hidden>
     <header class="market-header">
@@ -64,7 +56,7 @@
       </section>
 
       <section class="terminal-card order-card" aria-labelledby="order-heading">
-        <div class="card-heading"><h2 id="order-heading">Place order</h2></div>
+        <div class="card-heading"><h2 id="order-heading">Place order</h2><a class="exit-jump" href="#exit-protection">Protect SOL</a></div>
         <form id="order-form">
           <fieldset class="side-picker">
             <legend class="sr-only">Order side</legend>
@@ -121,6 +113,29 @@
         </div>
       </section>
     </div>
+    <section id="exit-protection" class="terminal-card exit-card" aria-labelledby="exit-heading">
+      <div class="card-heading"><h2 id="exit-heading">Stop loss &amp; take profit</h2></div>
+      <p class="exit-help">Reserve SOL once for both levels. The first level reached by the best bid activates the sell. Any remainder waits for liquidity.</p>
+      <form id="exit-form">
+        <label>Amount (SOL)
+          <input name="size" type="number" inputmode="decimal" min=".001" max="1000" step=".001" required>
+        </label>
+        <label>Stop loss (USDT)
+          <input name="stop" type="number" inputmode="decimal" min=".01" max="100000" step=".01" required>
+        </label>
+        <label>Take profit (USDT)
+          <input name="target" type="number" inputmode="decimal" min=".01" max="100000" step=".01" required>
+        </label>
+        <button id="protect-sol" type="submit" disabled>Protect SOL</button>
+      </form>
+      <p id="exit-notice" role="status"></p>
+      <div class="table-scroll">
+        <table aria-label="Exit plans">
+          <thead><tr><th scope="col">Amount (SOL)</th><th scope="col">Remaining</th><th scope="col">Stop loss</th><th scope="col">Take profit</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody id="exit-plans"><tr><td colspan="6">No exit plans yet</td></tr></tbody>
+        </table>
+      </div>
+    </section>
   </main>
 </body>
 </html>

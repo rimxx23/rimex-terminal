@@ -14,7 +14,7 @@ function destination() {
   if (!next) return "/";
   try {
     const target = new URL(next, location.origin);
-    return target.origin === location.origin && ["/", "/trade"].includes(target.pathname)
+    return target.origin === location.origin && ["/", "/scanner", "/trade", "/swap", "/portfolio", "/profile"].includes(target.pathname)
       ? target.pathname + target.search
       : "/";
   } catch {

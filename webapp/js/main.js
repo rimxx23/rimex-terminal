@@ -4,7 +4,7 @@ import { fillMissingData } from "./fallback.js";
 import { createBrowserStorage, createHistory } from "./history.js?v=2";
 import { SOLANA_ADDRESS_RE } from "./levels.js";
 import { renderAvatar, renderProfile } from "./views/profile.js?v=2";
-import { renderHint, renderLoading, renderMessage, renderReport } from "./views/scan.js";
+import { renderHint, renderLoading, renderMessage, renderReport } from "./views/scan.js?v=6";
 
 const dom = {
   form: document.getElementById("scan-form"),
@@ -13,15 +13,10 @@ const dom = {
   result: document.getElementById("result"),
   template: document.getElementById("report-template"),
   scanView: document.getElementById("scan-view"),
-  profileView: document.getElementById("profile-view"),
-  profileContent: document.getElementById("profile-content"),
-  profileButton: document.getElementById("profile-button"),
-  backButton: document.getElementById("back-button"),
   toast: document.getElementById("toast"),
 };
 
 const history = createHistory(createBrowserStorage());
-let user;
 let toastTimer;
 
 function showToast(text) {
@@ -38,33 +33,6 @@ async function copyAddress(address) {
   } catch {
     showToast("Copy not available");
   }
-}
-
-function showScanView() {
-  dom.profileView.hidden = true;
-  dom.scanView.hidden = false;
-}
-
-async function showProfileView() {
-  dom.scanView.hidden = true;
-  dom.profileView.hidden = false;
-  await refreshProfile();
-}
-
-async function refreshProfile() {
-  renderProfile(dom.profileContent, {
-    user,
-    entries: await history.load(),
-    onSelect: (address) => {
-      showScanView();
-      dom.input.value = address;
-      scan(address);
-    },
-    onClear: async () => {
-      await history.clear();
-      await refreshProfile();
-    },
-  });
 }
 
 async function scan(address) {
@@ -89,19 +57,14 @@ async function scan(address) {
 
 async function start() {
   try {
-    user = await prepareSession();
-    if (!user) return;
+    if (!await prepareSession()) return;
   } catch (error) {
     const status = document.getElementById("web-auth-status");
     status.textContent = error.message;
     status.hidden = false;
     return;
   }
-  dom.profileButton.hidden = false;
   dom.scanView.hidden = false;
-  dom.profileButton.replaceChildren(renderAvatar(user, "avatar"));
-  dom.profileButton.addEventListener("click", showProfileView);
-  dom.backButton.addEventListener("click", showScanView);
 
   dom.form.addEventListener("submit", (event) => {
     event.preventDefault();

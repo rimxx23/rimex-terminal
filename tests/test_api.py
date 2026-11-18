@@ -54,11 +54,18 @@ def test_health(client):
     assert client.get("/health").json() == {"status": "ok"}
 
 
-def test_index_serves_website(signed_in):
-    response = signed_in.get("/")
-
-    assert response.status_code == 200
-    assert "RIMEX" in response.text
+def test_workspace_serves_shared_navigation(signed_in):
+    pages = {
+        "/": "overview", "/scanner": "scanner", "/trade": "trade",
+        "/swap": "swap", "/portfolio": "portfolio", "/profile": "profile",
+    }
+    for path, section in pages.items():
+        response = signed_in.get(path)
+        assert response.status_code == 200
+        assert response.text.count('class="workspace-rail"') == 1
+        assert response.text.count('aria-current="page"') == 1
+        assert f'data-section="{section}" aria-current="page"' in response.text
+    assert "Recent activity" in signed_in.get("/").text
 
 
 def test_scan_with_a_session(signed_in, scanned_addresses):
@@ -90,7 +97,14 @@ def test_login_redirect_preserves_deep_link(client):
     response = client.get(f"/?address={BONK}", follow_redirects=False)
 
     assert response.status_code == 303
-    assert response.headers["location"] == f"/login?next=%2F%3Faddress%3D{BONK}"
+    assert response.headers["location"] == f"/login?next=%2Fscanner%3Faddress%3D{BONK}"
+
+
+def test_existing_scanner_links_redirect_to_scanner(signed_in):
+    response = signed_in.get(f"/?address={BONK}", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/scanner?address={BONK}"
 
 
 def test_invalid_address_returns_422(signed_in, scanned_addresses):
@@ -110,11 +124,11 @@ def test_rate_limit_per_ip(signed_in):
 
 
 def test_website_assets_are_served(signed_in):
-    page = signed_in.get("/")
+    page = signed_in.get("/scanner")
     script = signed_in.get("/static/js/main.js")
     styles = signed_in.get("/static/css/styles.css")
 
-    assert '<script type="module" src="/static/js/main.js?v=3">' in page.text
+    assert '<script type="module" src="/static/js/main.js?v=8">' in page.text
     assert script.status_code == 200
     assert "javascript" in script.headers["content-type"]
     assert script.headers["cache-control"] == "no-cache"

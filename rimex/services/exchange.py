@@ -27,6 +27,19 @@ CREATE TABLE IF NOT EXISTS fills (
     sell INTEGER REFERENCES orders(id), price INTEGER NOT NULL,
     size INTEGER NOT NULL, created_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS exit_plans (
+    id INTEGER PRIMARY KEY,
+    account TEXT NOT NULL REFERENCES accounts(id),
+    size INTEGER NOT NULL CHECK(size > 0),
+    remaining INTEGER NOT NULL CHECK(remaining >= 0),
+    stop INTEGER NOT NULL,
+    target INTEGER NOT NULL CHECK(target > stop),
+    status TEXT NOT NULL DEFAULT 'armed',
+    trigger TEXT,
+    triggered_at REAL
+);
+CREATE INDEX IF NOT EXISTS exit_status ON exit_plans(status, id);
+CREATE INDEX IF NOT EXISTS account_exits ON exit_plans(account, id);
 CREATE TABLE IF NOT EXISTS quote (
     id INTEGER PRIMARY KEY CHECK(id = 1), bid INTEGER, ask INTEGER,
     bid_size INTEGER, ask_size INTEGER, source TEXT, received_at REAL
@@ -68,7 +81,7 @@ class Exchange:
         with self.transaction() as db:
             db.execute("INSERT INTO accounts VALUES (?, ?, ?)", (account, START_CASH, START_SOL))
 
-    def _quote(self, db):
+    def current_quote(self, db):
         quote = db.execute("SELECT * FROM quote WHERE id = 1").fetchone()
         return quote if quote and time.time() - quote["received_at"] <= QUOTE_TTL else None
 
@@ -97,6 +110,7 @@ class Exchange:
                         break
                 field = "ask_size" if side == "buy" else "bid_size"
                 db.execute(f"UPDATE quote SET {field} = ? WHERE id = 1", (available,))
+            self._run_exits(db, bid)
 
     def _fill(self, db, order, resting, price: int, size: int) -> None:
         buy, sell = (order, resting) if order["side"] == "buy" else (resting, order)
@@ -124,69 +138,164 @@ class Exchange:
 
     def place(self, account: str, side: str, price: int | None, size: int) -> dict:
         with self.transaction() as db:
-            market = self._quote(db)
+            return self._order(self._place(db, account, side, price, size))
+
+    def _place(self, db, account: str, side: str, price: int | None, size: int, *, trigger: str | None = None):
+        market = self.current_quote(db)
+        if market is None:
+            raise TradeRejected("Market quotes are unavailable. Try again when the feed is live.")
+        market_order = price is None
+        kind = trigger or ("market" if market_order else "limit")
+        if market_order:
+            if side == "buy":
+                price = market["ask"] * 101 // 100
+            else:
+                price = (market["bid"] * 99 + 99) // 100
+        if kind == "limit" and db.execute(
+            "SELECT count(*) FROM orders WHERE account = ? AND status = 'open'", (account,)
+        ).fetchone()[0] >= 25:
+            raise TradeRejected("Cancel an existing order before placing another.")
+        if trigger is None:
+            self._reserve(db, account, "cash" if side == "buy" else "sol", price * size if side == "buy" else size)
+        order_id = db.execute(
+            "INSERT INTO orders(account, side, price, size, remaining, kind) VALUES (?, ?, ?, ?, ?, ?)",
+            (account, side, price, size, size, kind),
+        ).lastrowid
+        maker_price, maker_size = ("ask", "ask_size") if side == "buy" else ("bid", "bid_size")
+        other_side, ordering = ("sell", "ASC") if side == "buy" else ("buy", "DESC")
+        excluded = account if trigger else None
+        while True:
+            order = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+            if not order["remaining"]:
+                break
+            resting = db.execute(
+                f"SELECT * FROM orders WHERE status = 'open' AND side = ? "
+                f"AND (? IS NULL OR account != ?) ORDER BY price {ordering}, id LIMIT 1",
+                (other_side, excluded, excluded),
+            ).fetchone()
+            if resting and not crosses(side, price, resting["price"]):
+                resting = None
+            quote = self.current_quote(db)
+            use_maker = (
+                quote and quote[maker_size] and crosses(side, price, quote[maker_price])
+                and (resting is None or (
+                    resting["price"] != quote[maker_price]
+                    and crosses(side, resting["price"], quote[maker_price])
+                ))
+            )
+            if use_maker:
+                amount = min(order["remaining"], quote[maker_size])
+                self._fill(db, order, None, quote[maker_price], amount)
+                db.execute(f"UPDATE quote SET {maker_size} = {maker_size} - ? WHERE id = 1", (amount,))
+            elif resting is None:
+                break
+            elif resting["account"] == account:
+                raise TradeRejected("This order would match one of your own orders.")
+            else:
+                self._fill(db, order, resting, resting["price"], min(order["remaining"], resting["remaining"]))
+        if market_order and order["remaining"]:
+            if order["remaining"] == order["size"]:
+                raise TradeRejected("No liquidity available within 1% of the quoted price.")
+            if trigger is None:
+                self._release_order(db, order)
+            else:
+                db.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
+            order = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+        return order
+
+    @staticmethod
+    def _reserve(db, account: str, field: str, amount: int) -> None:
+        result = db.execute(
+            f"UPDATE accounts SET {field} = {field} - ? WHERE id = ? AND {field} >= ?",
+            (amount, account, amount),
+        )
+        if not result.rowcount:
+            raise TradeRejected("Insufficient available balance.")
+
+    @staticmethod
+    def reserved_exit_sol(db, account: str) -> int:
+        return db.execute(
+            "SELECT COALESCE(SUM(remaining), 0) FROM exit_plans "
+            "WHERE account = ? AND status IN ('armed', 'triggered')",
+            (account,),
+        ).fetchone()[0]
+
+    def has_active_exits(self) -> bool:
+        with self.transaction(write=False) as db:
+            return db.execute(
+                "SELECT 1 FROM exit_plans WHERE status IN ('armed', 'triggered') LIMIT 1"
+            ).fetchone() is not None
+
+    def protect(self, account: str, size: int, stop: int, target: int) -> dict:
+        with self.transaction() as db:
+            market = self.current_quote(db)
             if market is None:
                 raise TradeRejected("Market quotes are unavailable. Try again when the feed is live.")
-            kind = "limit"
-            if price is None:
-                kind = "market"
-                if side == "buy":
-                    price = market["ask"] * 101 // 100
-                else:
-                    price = (market["bid"] * 99 + 99) // 100
-            if kind == "limit" and db.execute(
-                "SELECT count(*) FROM orders WHERE account = ? AND status = 'open'", (account,)
-            ).fetchone()[0] >= 25:
-                raise TradeRejected("Cancel an existing order before placing another.")
-            field = "cash" if side == "buy" else "sol"
-            reserve = price * size if side == "buy" else size
-            result = db.execute(
-                f"UPDATE accounts SET {field} = {field} - ? WHERE id = ? AND {field} >= ?",
-                (reserve, account, reserve),
-            )
-            if not result.rowcount:
-                raise TradeRejected("Insufficient available balance.")
-            order_id = db.execute(
-                "INSERT INTO orders(account, side, price, size, remaining, kind) VALUES (?, ?, ?, ?, ?, ?)",
-                (account, side, price, size, size, kind),
-            ).lastrowid
-            maker_price, maker_size = ("ask", "ask_size") if side == "buy" else ("bid", "bid_size")
-            other_side, ordering = ("sell", "ASC") if side == "buy" else ("buy", "DESC")
-            while True:
-                order = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-                if not order["remaining"]:
-                    break
-                resting = db.execute(
-                    f"SELECT * FROM orders WHERE status = 'open' AND side = ? "
-                    f"ORDER BY price {ordering}, id LIMIT 1",
-                    (other_side,),
-                ).fetchone()
-                if resting and not crosses(side, price, resting["price"]):
-                    resting = None
-                quote = self._quote(db)
-                use_maker = (
-                    quote and quote[maker_size] and crosses(side, price, quote[maker_price])
-                    and (resting is None or (
-                        resting["price"] != quote[maker_price]
-                        and crosses(side, resting["price"], quote[maker_price])
-                    ))
+            if not stop < market["bid"] < target:
+                raise TradeRejected("Stop loss must be below the current bid and take profit above it.")
+            count = db.execute(
+                "SELECT count(*) FROM exit_plans WHERE account = ? AND status IN ('armed', 'triggered')",
+                (account,),
+            ).fetchone()[0]
+            if count >= 10:
+                raise TradeRejected("Cancel an existing exit plan before adding another.")
+            self._reserve(db, account, "sol", size)
+            plan = db.execute(
+                "INSERT INTO exit_plans(account, size, remaining, stop, target) "
+                "VALUES (?, ?, ?, ?, ?) RETURNING *",
+                (account, size, size, stop, target),
+            ).fetchone()
+            return self._exit(plan)
+
+    def cancel_exit(self, account: str, plan_id: int) -> bool:
+        with self.transaction() as db:
+            plan = db.execute(
+                "UPDATE exit_plans SET status = 'cancelled' WHERE account = ? AND id = ? "
+                "AND status IN ('armed', 'triggered') RETURNING remaining",
+                (account, plan_id),
+            ).fetchone()
+            if plan is None:
+                return False
+            db.execute("UPDATE accounts SET sol = sol + ? WHERE id = ?", (plan["remaining"], account))
+            return True
+
+    def _run_exits(self, db, bid: int) -> None:
+        plans = db.execute(
+            "SELECT * FROM exit_plans WHERE status = 'triggered' "
+            "OR (status = 'armed' AND (stop >= ? OR target <= ?)) "
+            "ORDER BY (status = 'triggered') DESC, triggered_at, id",
+            (bid, bid),
+        ).fetchall()
+        for plan in plans:
+            trigger = plan["trigger"]
+            if trigger is None:
+                trigger = "stop_loss" if bid <= plan["stop"] else "take_profit"
+                db.execute(
+                    "UPDATE exit_plans SET status = 'triggered', trigger = ?, triggered_at = ? WHERE id = ?",
+                    (trigger, time.time(), plan["id"]),
                 )
-                if use_maker:
-                    amount = min(order["remaining"], quote[maker_size])
-                    self._fill(db, order, None, quote[maker_price], amount)
-                    db.execute(f"UPDATE quote SET {maker_size} = {maker_size} - ? WHERE id = 1", (amount,))
-                elif resting is None:
-                    break
-                elif resting["account"] == account:
-                    raise TradeRejected("This order would match one of your own orders.")
-                else:
-                    self._fill(db, order, resting, resting["price"], min(order["remaining"], resting["remaining"]))
-            if kind == "market" and order["remaining"]:
-                if order["remaining"] == order["size"]:
-                    raise TradeRejected("No liquidity available within 1% of the quoted price.")
-                self._release_order(db, order)
-                order = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-            return self._order(order)
+            db.execute("SAVEPOINT exit_fill")
+            try:
+                order = self._place(db, plan["account"], "sell", None, plan["remaining"], trigger=trigger)
+            except TradeRejected:
+                db.execute("ROLLBACK TO exit_fill")
+            else:
+                remaining = order["remaining"]
+                db.execute(
+                    "UPDATE exit_plans SET remaining = ?, status = ? WHERE id = ?",
+                    (remaining, "triggered" if remaining else "filled", plan["id"]),
+                )
+            finally:
+                db.execute("RELEASE exit_fill")
+
+    @staticmethod
+    def _exit(row) -> dict:
+        return {
+            "id": row["id"], "status": row["status"], "trigger": row["trigger"],
+            "triggered_at": row["triggered_at"], "size": displayed(row["size"], SIZE_SCALE),
+            "remaining": displayed(row["remaining"], SIZE_SCALE),
+            "stop": displayed(row["stop"], PRICE_SCALE), "target": displayed(row["target"], PRICE_SCALE),
+        }
 
     @staticmethod
     def _release_order(db, order) -> None:
@@ -230,7 +339,12 @@ class Exchange:
                 "WHERE b.account = ? OR s.account = ? ORDER BY fills.id DESC LIMIT 50",
                 (account, account),
             ).fetchall()
-            quote = self._quote(db)
+            exits = db.execute(
+                "SELECT * FROM exit_plans WHERE account = ? "
+                "ORDER BY (status IN ('armed', 'triggered')) DESC, id DESC LIMIT 25",
+                (account,),
+            ).fetchall()
+            quote = self.current_quote(db)
             book = {}
             for side, order_by in (("buy", "DESC"), ("sell", "ASC")):
                 rows = db.execute(
@@ -247,7 +361,7 @@ class Exchange:
                     {"price": displayed(price, PRICE_SCALE), "size": displayed(levels[price], SIZE_SCALE)}
                     for price in sorted(levels, reverse=side == "buy")[:10]
                 ]
-            locked = {"buy": 0, "sell": 0}
+            locked = {"buy": 0, "sell": self.reserved_exit_sol(db, account)}
             for order in orders:
                 if order["status"] == "open":
                     size = order["remaining"]
@@ -265,6 +379,7 @@ class Exchange:
                     "locked_sol": displayed(locked["sell"], SIZE_SCALE),
                 },
                 "orders": [self._order(order) for order in orders],
+                "exits": [self._exit(plan) for plan in exits],
                 "trades": [
                     {"id": row["id"], "side": "buy" if row["buyer"] == account else "sell",
                      "price": displayed(row["price"], PRICE_SCALE),

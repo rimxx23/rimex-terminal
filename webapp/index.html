@@ -9,20 +9,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/styles.css">
   <link rel="icon" type="image/jpeg" href="/static/brand/rimex-terminal.jpg">
-  <link rel="stylesheet" href="/static/css/site.css?v=4">
-  <script type="module" src="/static/js/main.js?v=3"></script>
+  <link rel="stylesheet" href="/static/css/site.css?v=8">
+  <script type="module" src="/static/js/main.js?v=8"></script>
 </head>
-<body class="website">
-  <nav class="site-nav" aria-label="Rimex Terminal">
-    <a class="site-brand" href="/"><span class="brand-mark" aria-hidden="true"></span> RIMEX TERMINAL</a>
-    <div class="nav-controls">
-      <a href="/" aria-current="page">Scanner</a><a href="/trade">Demo trading</a>
-      <span class="account-controls" data-account hidden>
-        <span data-username></span><button type="button">Sign out</button><span role="status"></span>
-      </span>
-      <button id="profile-button" class="profile-button" type="button" aria-label="Scan history" hidden></button>
-    </div>
-  </nav>
+<body class="website workspace">
+  <!-- workspace navigation -->
   <p id="web-auth-status" role="status" hidden></p>
 
   <section id="scan-view" hidden>
@@ -35,11 +26,6 @@
       <button id="scan-button" type="submit">Scan</button>
     </form>
     <main id="result"></main>
-  </section>
-
-  <section id="profile-view" hidden>
-    <button id="back-button" class="link-button back" type="button">← Back to scanner</button>
-    <div id="profile-content"></div>
   </section>
 
   <div id="toast" class="toast" role="status"></div>

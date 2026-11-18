@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Demo Portfolio · Rimex Terminal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/jpeg" href="/static/brand/rimex-terminal.jpg">
+  <link rel="stylesheet" href="/static/css/site.css?v=8">
+  <script type="module" src="/static/js/portfolio.js?v=9"></script>
+</head>
+<body class="trade-site workspace">
+  <!-- workspace navigation -->
+  <main class="terminal portfolio-terminal" hidden>
+    <header class="market-header">
+      <div>
+        <h1>Demo <span>Portfolio</span></h1>
+        <p>Total holdings include balances reserved by open orders.</p>
+      </div>
+      <span id="portfolio-feed" class="feed" data-live="false">Waiting for market quote</span>
+    </header>
+    <dl class="portfolio-metrics" aria-label="Portfolio metrics">
+      <div class="terminal-card"><dt>Total value</dt><dd id="portfolio-equity">—</dd></div>
+      <div class="terminal-card"><dt>Realized P&L</dt><dd id="portfolio-realized">—</dd></div>
+      <div class="terminal-card"><dt>Unrealized P&L</dt><dd id="portfolio-unrealized">—</dd></div>
+      <div class="terminal-card"><dt>Average SOL entry</dt><dd id="portfolio-average">—</dd></div>
+    </dl>
+    <section class="terminal-card holdings-card" aria-labelledby="holdings-title">
+      <div class="card-heading"><h2 id="holdings-title">Holdings</h2></div>
+      <dl class="portfolio-holdings">
+        <div><dt>SOL</dt><dd id="portfolio-sol">—</dd></div>
+        <div><dt>USDT</dt><dd id="portfolio-usdt">—</dd></div>
+        <div><dt>SOL mark price</dt><dd id="portfolio-mark">—</dd></div>
+      </dl>
+      <p id="portfolio-basis" class="portfolio-note" hidden></p>
+    </section>
+    <section class="terminal-card journal-card" aria-labelledby="journal-title">
+      <div class="card-heading">
+        <h2 id="journal-title">Activity journal</h2>
+        <span id="journal-count"></span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th scope="col">Time</th><th scope="col">Source</th><th scope="col">Side</th><th scope="col">Amount (SOL)</th><th scope="col">Value (USDT)</th><th scope="col">Price (USDT)</th><th scope="col">Realized P&L</th></tr></thead>
+          <tbody id="journal"><tr><td colspan="7" class="table-empty">Loading activity…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="journal-page" id="journal-page" hidden>
+        <button id="journal-prev" type="button">Previous</button>
+        <button id="journal-next" type="button">Next</button>
+      </div>
+    </section>
+  </main>
+  <p id="web-auth-status" role="status" hidden></p>
+</body>
+</html>

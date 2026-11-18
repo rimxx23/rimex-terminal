@@ -1,10 +1,12 @@
 import asyncio
+import logging
+import sqlite3
 import time
 from decimal import Decimal, DecimalException
 from typing import Annotated, Literal
 
 import aiohttp
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Path, Request, Response
 from pydantic import BaseModel, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
@@ -18,6 +20,7 @@ from rimex.services.exchange import Exchange
 
 router = APIRouter(prefix="/api/trade", tags=["demo trade"])
 writes = SlidingWindowLimiter(limit=40, period=60)
+logger = logging.getLogger(__name__)
 
 
 class OrderRequest(BaseModel):
@@ -33,19 +36,32 @@ class OrderRequest(BaseModel):
         return self
 
 
+class ExitRequest(BaseModel):
+    size: Decimal = Field(gt=0, le=1000, max_digits=7, decimal_places=3)
+    stop: Decimal = Field(gt=0, le=100_000, max_digits=8, decimal_places=2)
+    target: Decimal = Field(gt=0, le=100_000, max_digits=8, decimal_places=2)
+
+
 def enforce(limiter: SlidingWindowLimiter, identity: str) -> None:
     if retry := limiter.hit(identity):
         raise HTTPException(429, "Too many requests. Try again shortly.", headers={"Retry-After": str(retry)})
 
 
-async def exchange_for(request: Request) -> Exchange:
-    state = request.app.state
-    exchange = await get_exchange(request)
+def start_quote_feed(app: FastAPI, exchange: Exchange) -> None:
+    state = app.state
     if state.quote_task is None or state.quote_task.done():
         async def on_quote(bid, ask, source):
-            await run_in_threadpool(state.exchange.update_quote, bid, ask, source)
+            try:
+                await run_in_threadpool(exchange.update_quote, bid, ask, source)
+            except sqlite3.Error:
+                logger.exception("Could not apply market quote")
 
         state.quote_task = asyncio.create_task(stream_quotes(state.http_session, on_quote))
+
+
+async def exchange_for(request: Request) -> Exchange:
+    exchange = await get_exchange(request)
+    start_quote_feed(request.app, exchange)
     return exchange
 
 
@@ -113,4 +129,32 @@ async def cancel(
     enforce(writes, user.account)
     if not await run_in_threadpool(exchange.cancel, user.account, order_id):
         raise HTTPException(404, "Open order not found.")
+    return {"cancelled": True}
+
+
+@router.post("/exits", dependencies=[Depends(require_trade_header)], status_code=201)
+async def protect(
+    body: ExitRequest,
+    user: Annotated[WebUser, Depends(require_web_user)],
+    exchange: Annotated[Exchange, Depends(exchange_for)],
+) -> dict:
+    enforce(writes, user.account)
+    try:
+        size = units(body.size, SIZE_SCALE, 1000)
+        stop = units(body.stop, PRICE_SCALE, 100_000)
+        target = units(body.target, PRICE_SCALE, 100_000)
+        return await run_in_threadpool(exchange.protect, user.account, size, stop, target)
+    except TradeRejected as error:
+        raise HTTPException(409, str(error)) from None
+
+
+@router.delete("/exits/{plan_id}", dependencies=[Depends(require_trade_header)])
+async def cancel_exit(
+    plan_id: Annotated[int, Path(ge=1, le=2**63 - 1)],
+    user: Annotated[WebUser, Depends(require_web_user)],
+    exchange: Annotated[Exchange, Depends(exchange_for)],
+) -> dict:
+    enforce(writes, user.account)
+    if not await run_in_threadpool(exchange.cancel_exit, user.account, plan_id):
+        raise HTTPException(404, "Active exit plan not found.")
     return {"cancelled": True}

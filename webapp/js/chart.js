@@ -11,6 +11,7 @@ export function createTradeChart(loadCandles) {
   let feed;
   let orders = [];
   let trades = [];
+  let exits = [];
   let hover = null;
   let pending;
   let range;
@@ -93,6 +94,23 @@ export function createTradeChart(loadCandles) {
       context.fillText(order.side === "buy" ? "B" : "S", endX - 14, Math.max(8, py - 7));
     }
 
+    for (const plan of exits) {
+      if (plan.status !== "armed" && plan.status !== "triggered") continue;
+      for (const [trigger, label, price, dash] of [
+        ["stop_loss", "SL", plan.stop, [3, 5]],
+        ["take_profit", "TP", plan.target, [8, 5]],
+      ]) {
+        if (plan.trigger && plan.trigger !== trigger) continue;
+        const bounded = Math.max(floor, Math.min(ceiling, Number(price)));
+        const py = y(bounded);
+        const arrow = Number(price) > ceiling ? " ↑" : Number(price) < floor ? " ↓" : "";
+        line(padding.left, py, endX, py, "#bebebe", dash);
+        context.fillStyle = "#e8e8e8";
+        const labelY = Math.max(padding.top + 8, py - 7);
+        context.fillText(`${label} ${priceLabel(price)}${arrow}`, padding.left + 3, labelY);
+      }
+    }
+
     for (const trade of trades) {
       const candleIndex = candles.findIndex(
         (candle) => trade.created_at >= candle.time && trade.created_at < candle.time + feed.seconds,
@@ -171,9 +189,10 @@ export function createTradeChart(loadCandles) {
       refresh();
       setInterval(refresh, 8000);
     },
-    update(nextOrders, nextTrades) {
+    update(nextOrders, nextTrades, nextExits = []) {
       orders = nextOrders;
       trades = nextTrades;
+      exits = nextExits;
       draw();
     },
   };

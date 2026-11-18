@@ -1,15 +1,17 @@
 import { ApiError } from "./api.js";
-import { createTradeChart } from "./chart.js";
+import { createTradeChart } from "./chart.js?v=9";
 import { loginPage, prepareSession } from "./session.js";
 
 const $ = (id) => document.getElementById(id);
 const form = $("order-form");
+const exitForm = $("exit-form");
 const price = $("price");
 const size = $("size");
 const asPrice = (value) => Number(value).toFixed(2);
 const asSize = (value) => Number(value).toFixed(3);
 const asCash = (value) => Number(value).toFixed(5).replace(/(\.\d{2})0+$/, "$1");
 const time = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
+const renderedRows = new Map();
 let snapshot;
 let writing = false;
 let loading = false;
@@ -19,9 +21,11 @@ const side = () => form.elements.side.value;
 const kind = () => form.elements.kind.value;
 const chart = createTradeChart((interval) => api(`/candles?interval=${interval}`));
 
-function notice(message, error = false) {
-  $("trade-notice").textContent = message;
-  $("trade-notice").dataset.error = String(error);
+const triggerLabels = { stop_loss: "Stop loss", take_profit: "Take profit" };
+
+function notice(message, error = false, target = "trade-notice") {
+  $(target).textContent = message;
+  $(target).dataset.error = String(error);
 }
 
 async function api(path = "", method = "GET", payload) {
@@ -48,6 +52,8 @@ function cell(row, value, className = "") {
 }
 
 function renderRows(target, list, width, empty, buildRow) {
+  const signature = JSON.stringify(list);
+  if (renderedRows.get(target) === signature) return;
   const rows = list.map((item) => {
     const row = document.createElement("tr");
     buildRow(row, item);
@@ -59,6 +65,7 @@ function renderRows(target, list, width, empty, buildRow) {
     rows.push(row);
   }
   $(target).replaceChildren(...rows);
+  renderedRows.set(target, signature);
 }
 
 function renderForm() {
@@ -74,10 +81,11 @@ function renderForm() {
   $("place").textContent = direction === "buy" ? "Place buy order" : "Place sell order";
   $("place").dataset.side = direction;
   $("place").disabled = !snapshot?.market || writing;
+  $("protect-sol").disabled = !snapshot?.market || writing;
   $("best-price").disabled = !snapshot?.market;
 }
 
-function render({ market, wallet, book, orders, trades }) {
+function render({ market, wallet, book, orders, trades, exits }) {
   $("feed").dataset.live = String(Boolean(market));
   $("feed").textContent = market ? market.source : "Quote feed unavailable";
   $("bid").textContent = market ? asPrice(market.bid) : "—";
@@ -95,7 +103,7 @@ function render({ market, wallet, book, orders, trades }) {
   }
   renderRows("orders", orders, 6, "No orders yet", (row, order) => {
     cell(row, order.side.toUpperCase(), order.side);
-    cell(row, order.kind === "market" ? "Market" : asPrice(order.price));
+    cell(row, triggerLabels[order.kind] ?? (order.kind === "market" ? "Market" : asPrice(order.price)));
     cell(row, asSize(order.size));
     cell(row, asSize(order.remaining));
     cell(row, order.status);
@@ -115,7 +123,24 @@ function render({ market, wallet, book, orders, trades }) {
     cell(row, asSize(trade.size));
     cell(row, time.format(trade.created_at * 1000));
   });
-  chart.update(orders, trades);
+  renderRows("exit-plans", exits, 6, "No exit plans yet", (row, plan) => {
+    cell(row, asSize(plan.size));
+    cell(row, asSize(plan.remaining));
+    cell(row, asPrice(plan.stop));
+    cell(row, asPrice(plan.target));
+    const trigger = triggerLabels[plan.trigger];
+    cell(row, trigger ? `${trigger} · ${plan.status}` : plan.status);
+    const actions = row.insertCell();
+    if (["armed", "triggered"].includes(plan.status)) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Cancel";
+      button.setAttribute("aria-label", `Cancel exit plan ${plan.id}`);
+      button.dataset.id = plan.id;
+      actions.append(button);
+    }
+  });
+  chart.update(orders, trades, exits);
   renderForm();
 }
 
@@ -140,17 +165,17 @@ async function refresh() {
   }
 }
 
-async function changeOrder(operation, successMessage) {
+async function changeOrder(operation, successMessage, target = "trade-notice") {
   if (writing) return;
   writing = true;
   latestRequest++;
-  notice("");
+  notice("", false, target);
   renderForm();
   try {
     const result = await operation();
-    notice(successMessage(result));
+    notice(successMessage(result), false, target);
   } catch (error) {
-    notice(error instanceof ApiError ? error.message : "Connection unavailable. Check your orders.", true);
+    notice(error instanceof ApiError ? error.message : "Connection unavailable. Check your orders.", true, target);
   } finally {
     writing = false;
     renderForm();
@@ -186,6 +211,26 @@ $("orders").addEventListener("click", (event) => {
     button.disabled = true;
     changeOrder(() => api(`/orders/${button.dataset.id}`, "DELETE"), () => "Order cancelled.")
       .finally(() => { button.disabled = false; });
+  }
+});
+
+exitForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!snapshot?.market || writing) return;
+  const plan = Object.fromEntries(new FormData(exitForm));
+  changeOrder(() => api("/exits", "POST", plan), () => {
+    exitForm.reset();
+    return "Exit plan armed. SOL reserved.";
+  }, "exit-notice");
+});
+$("exit-plans").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-id]");
+  if (button && !writing) {
+    changeOrder(
+      () => api(`/exits/${button.dataset.id}`, "DELETE"),
+      () => "Exit plan cancelled. Remaining SOL released.",
+      "exit-notice",
+    );
   }
 });
 

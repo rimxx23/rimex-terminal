@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Demo Swap · Rimex Terminal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/jpeg" href="/static/brand/rimex-terminal.jpg">
+  <link rel="stylesheet" href="/static/css/site.css?v=8">
+  <script type="module" src="/static/js/swap.js"></script>
+</head>
+<body class="trade-site workspace">
+  <!-- workspace navigation -->
+  <p id="web-auth-status" role="status" hidden></p>
+  <main class="terminal swap-terminal" hidden>
+    <header class="market-header">
+      <div>
+        <h1>Demo <span>Swap</span></h1>
+        <p>SOL / USDT · Jupiter quotes · Virtual balance</p>
+      </div>
+    </header>
+
+    <div class="swap-grid">
+      <section class="terminal-card swap-card" aria-labelledby="swap-heading">
+        <div class="card-heading"><h2 id="swap-heading">Exchange assets</h2></div>
+        <form id="swap-form">
+          <div class="swap-field">
+            <div class="swap-field-label"><label for="swap-amount">You pay</label><span id="available">Available —</span></div>
+            <div class="swap-field-value">
+              <input id="swap-amount" name="amount" type="number" inputmode="decimal" min="0.001" max="1000" step="0.001" placeholder="0.00" required>
+              <strong id="input-asset">SOL</strong>
+            </div>
+          </div>
+          <button class="swap-direction" id="swap-direction" type="button" aria-label="Reverse swap direction" title="Reverse swap direction">⇅</button>
+          <div class="swap-field">
+            <div class="swap-field-label"><span>You receive</span></div>
+            <div class="swap-field-value">
+              <output id="expected-output" for="swap-amount">—</output>
+              <strong id="output-asset">USDT</strong>
+            </div>
+          </div>
+          <dl class="swap-quote" id="swap-details" hidden>
+            <div><dt>Rate</dt><dd id="swap-rate">—</dd></div>
+            <div><dt>Minimum received</dt><dd id="min-output">—</dd></div>
+            <div><dt>Slippage tolerance</dt><dd id="swap-slippage">—</dd></div>
+            <div><dt>Quote expires in</dt><dd id="quote-timer">—</dd></div>
+          </dl>
+          <div class="swap-actions">
+            <button id="get-quote" type="submit">Get quote</button>
+            <button id="confirm-swap" type="button" hidden>Confirm demo swap</button>
+          </div>
+          <p id="swap-status" role="status"></p>
+        </form>
+      </section>
+
+      <div class="swap-side">
+        <section class="terminal-card wallet-card" aria-labelledby="balance-heading">
+          <div class="card-heading"><h2 id="balance-heading">Available balance</h2></div>
+          <dl class="swap-balances">
+            <div><dt>SOL</dt><dd id="swap-sol">—</dd></div>
+            <div><dt>USDT</dt><dd id="swap-usdt">—</dd></div>
+          </dl>
+        </section>
+        <section class="terminal-card" aria-labelledby="swaps-heading">
+          <div class="card-heading"><h2 id="swaps-heading">Recent swaps</h2></div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th scope="col">Paid</th><th scope="col">Received</th><th scope="col">Time</th></tr></thead>
+              <tbody id="swap-history"><tr><td colspan="3" class="table-empty">No swaps yet</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

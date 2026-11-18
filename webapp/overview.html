@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Overview · Rimex Terminal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/jpeg" href="/static/brand/rimex-terminal.jpg">
+  <link rel="stylesheet" href="/static/css/site.css?v=8">
+  <script type="module" src="/static/js/overview.js?v=9"></script>
+</head>
+<body class="trade-site workspace">
+  <!-- workspace navigation -->
+  <main class="terminal overview-terminal" hidden>
+    <header class="market-header">
+      <div><h1>Overview</h1><p id="overview-user"></p></div>
+    </header>
+    <dl class="overview-metrics" aria-label="Account overview">
+      <div class="terminal-card"><dt>Demo portfolio value</dt><dd id="overview-equity">—</dd></div>
+      <div class="terminal-card"><dt>Realized P&L</dt><dd id="overview-pnl">—</dd></div>
+      <div class="terminal-card"><dt>SOL / USDT</dt><dd id="overview-mark">—</dd></div>
+    </dl>
+    <p id="overview-status" role="status" hidden></p>
+    <div class="overview-grid">
+      <section class="terminal-card overview-links" aria-labelledby="tools-title">
+        <div class="card-heading"><h2 id="tools-title">Quick access</h2></div>
+        <a href="/scanner"><span><strong>Scanner</strong><small>Check a Solana token</small></span><span aria-hidden="true">↗</span></a>
+        <a href="/trade"><span><strong>Demo trading</strong><small>Chart, order book and virtual orders</small></span><span aria-hidden="true">↗</span></a>
+        <a href="/swap"><span><strong>Swap</strong><small>Exchange virtual SOL and USDT</small></span><span aria-hidden="true">↗</span></a>
+        <a href="/portfolio"><span><strong>Portfolio</strong><small>Holdings, P&L and the full journal</small></span><span aria-hidden="true">↗</span></a>
+      </section>
+      <section class="terminal-card overview-activity" aria-labelledby="activity-title">
+        <div class="card-heading"><h2 id="activity-title">Recent activity</h2><a href="/portfolio">View journal</a></div>
+        <ul id="overview-journal"><li class="overview-empty">Loading activity…</li></ul>
+      </section>
+    </div>
+  </main>
+  <p id="web-auth-status" role="status" hidden></p>
+</body>
+</html>

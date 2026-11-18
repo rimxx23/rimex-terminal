@@ -10,8 +10,9 @@ Rimex Terminal is a website for scanning Solana tokens and practicing SOL/USDT t
 docker compose up -d --build
 ```
 
-Open [Rimex Terminal](http://localhost:8001/) and create an account. Sign in to
-use the token scanner and demo trading. Each account starts with 10,000 virtual
+Open [Rimex Terminal](http://localhost:8001/) and create an account. The overview
+shows your demo balance and recent activity. The sidebar links to the scanner,
+demo trading, swaps, portfolio and profile. Each account starts with 10,000 virtual
 USDT and 5 virtual SOL. When you register in a browser with an existing guest
 wallet, Rimex carries over its balance and trading history.
 
@@ -34,6 +35,32 @@ source venv/bin/activate
 pip install -r requirements.txt
 uvicorn rimex.presentation.api.app:app --port 8001
 ```
+
+## Demo swap
+
+Open [Swap](http://localhost:8001/swap) to exchange virtual SOL and USDT using
+public Jupiter quotes. The quote shows expected output, minimum received and a
+25-second expiry. Rimex refreshes the price at confirmation and uses the same
+available balance as demo trading. Completed swaps appear in their own history.
+`JUPITER_API_KEY` is optional and stays on the server.
+
+## Stop loss and take profit
+
+Choose **Protect SOL** in demo trading to reserve one SOL amount for a stop
+below the best bid and a target above it. When either level is reached, the
+other is cancelled. The resulting sale uses available demo liquidity at the
+current market, and any remaining SOL stays reserved until a later quote or
+cancellation. The chart shows both levels, and the activity journal labels
+the fills by trigger. Rimex resumes monitoring persisted exit plans on startup.
+
+## Demo portfolio
+
+[Portfolio](http://localhost:8001/portfolio) combines order fills and completed
+swaps. It shows total holdings, including open-order reserves, and calculates
+realized and unrealized P&L with weighted-average SOL cost. The mark uses the
+midpoint of the live Binance quote. Rimex values the starting SOL at the first
+recorded execution for accounts with activity, or the first portfolio quote
+for accounts without activity.
 
 ## Architecture
 
