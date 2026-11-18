@@ -1,11 +1,16 @@
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+}
 
-export async function scanToken(address, initData, fetchImpl = fetch) {
+export async function scanToken(address, fetchImpl = fetch) {
   let response;
   try {
-    response = await fetchImpl("/api/scan", {
+    response = await fetchImpl("/api/web/scan", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Telegram-Init-Data": initData },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ address }),
     });
   } catch {
@@ -13,7 +18,7 @@ export async function scanToken(address, initData, fetchImpl = fetch) {
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new ApiError(typeof data.detail === "string" ? data.detail : "Request failed");
+    throw new ApiError(typeof data.detail === "string" ? data.detail : "Request failed", response.status);
   }
   return data;
 }

@@ -1,77 +1,102 @@
-import hmac
-import logging
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlencode
 
 import aiohttp
-from aiogram.types import Update
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from rimex import config
 from rimex.clients.common import create_http_session
+from rimex.clients.quotes import CANDLE_INTERVALS
 from rimex.domain.address import is_valid_address
-from rimex.presentation.api.auth import get_telegram_user_id
 from rimex.presentation.api.schemas import ScanRequest, ScanResponse
+from rimex.presentation.api.trading import router as trading_router
+from rimex.presentation.api.web_auth import optional_user, require_web_user, router as auth_router
 from rimex.presentation.ratelimit import SlidingWindowLimiter
-from rimex.presentation.telegram.app import (
-    create_bot,
-    create_dispatcher,
-    setup_menu_button,
-    validate_webapp_url,
-)
+from rimex.services.accounts import WebUser
 from rimex.services.scanner import scan_solana_token
 
-WEBHOOK_PATH = "/telegram/webhook"
 WEBAPP_DIR = Path(__file__).resolve().parents[3] / "webapp"
 WEBAPP_INDEX = WEBAPP_DIR / "index.html"
 
-logger = logging.getLogger("rimex.api")
-
-limiter = SlidingWindowLimiter(limit=5, period=60)
-
-
-def webhook_enabled() -> bool:
-    return bool(config.WEBHOOK_SECRET and config.PUBLIC_URL)
+web_limiter = SlidingWindowLimiter(limit=5, period=60)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not config.BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN is not set. It is required to verify Telegram users.")
-    webapp_url = validate_webapp_url(config.WEBAPP_URL)
+    app.state.exchange = None
+    app.state.exchange_lock = asyncio.Lock()
+    app.state.accounts = None
+    app.state.register_limiter = SlidingWindowLimiter(limit=5, period=60)
+    app.state.login_limiter = SlidingWindowLimiter(limit=10, period=60)
+    app.state.password_slots = asyncio.Semaphore(4)
+    app.state.quote_task = None
+    app.state.candles = {}
+    app.state.candle_locks = {interval: asyncio.Lock() for interval in CANDLE_INTERVALS}
+    app.state.web_scan_slots = asyncio.Semaphore(10)
     app.state.http_session = create_http_session()
-    app.state.bot = create_bot(config.BOT_TOKEN)
-    app.state.dispatcher = create_dispatcher(app.state.http_session, webapp_url)
-
-    if webhook_enabled():
-        await app.state.bot.set_webhook(
-            url=f"{config.PUBLIC_URL}{WEBHOOK_PATH}",
-            secret_token=config.WEBHOOK_SECRET,
-            allowed_updates=app.state.dispatcher.resolve_used_update_types(),
-        )
-        await setup_menu_button(app.state.bot, webapp_url)
-        logger.info("Telegram webhook set to %s%s", config.PUBLIC_URL, WEBHOOK_PATH)
-
-    yield
-
-    await app.state.bot.session.close()
-    await app.state.http_session.close()
+    try:
+        yield
+    finally:
+        if app.state.quote_task is not None:
+            app.state.quote_task.cancel()
+            await asyncio.gather(app.state.quote_task, return_exceptions=True)
+        await app.state.http_session.close()
 
 
-app = FastAPI(title="Rimex X-Ray API", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=WEBAPP_DIR), name="static")
+class WebsiteAssets(StaticFiles):
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app = FastAPI(title="Rimex Terminal", lifespan=lifespan)
+app.mount("/static", WebsiteAssets(directory=WEBAPP_DIR), name="static")
+app.include_router(auth_router)
+app.include_router(trading_router)
+
+
+@app.exception_handler(RequestValidationError)
+async def validate_request(request: Request, error: RequestValidationError):
+    if request.url.path.rstrip("/") in {"/api/auth/register", "/api/trade/register", "/api/auth/login"}:
+        return JSONResponse({"detail": "Check your username and password."}, status_code=422)
+    return await request_validation_exception_handler(request, error)
 
 
 def get_http_session(request: Request) -> aiohttp.ClientSession:
     return request.app.state.http_session
 
 
-@app.get("/", include_in_schema=False)
-async def index() -> FileResponse:
-    return FileResponse(WEBAPP_INDEX)
+@app.get("/", include_in_schema=False, response_model=None)
+async def index(
+    request: Request, user: Annotated[WebUser | None, Depends(optional_user)],
+) -> FileResponse | RedirectResponse:
+    headers = {"Cache-Control": "no-store"}
+    if user is None:
+        path = f"/?{request.url.query}" if request.url.query else "/"
+        return RedirectResponse(f"/login?{urlencode({'next': path})}", status_code=303, headers=headers)
+    return FileResponse(WEBAPP_INDEX, headers=headers)
+
+
+@app.get("/login", include_in_schema=False)
+async def login_page() -> FileResponse:
+    return FileResponse(WEBAPP_DIR / "login.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/trade", include_in_schema=False, response_model=None)
+async def trade_page(
+    user: Annotated[WebUser | None, Depends(optional_user)],
+) -> FileResponse | RedirectResponse:
+    headers = {"Cache-Control": "no-store"}
+    if user is None:
+        return RedirectResponse("/login?next=%2Ftrade", status_code=303, headers=headers)
+    return FileResponse(WEBAPP_DIR / "trade.html", headers=headers)
 
 
 @app.get("/health")
@@ -79,17 +104,15 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/scan", response_model=ScanResponse)
-async def scan(
-    body: ScanRequest,
-    user_id: Annotated[int, Depends(get_telegram_user_id)],
-    http_session: Annotated[aiohttp.ClientSession, Depends(get_http_session)],
+async def scan_for(
+    body: ScanRequest, identity: int | str, throttle: SlidingWindowLimiter,
+    http_session: aiohttp.ClientSession,
 ) -> ScanResponse:
     address = body.address.strip()
     if not is_valid_address(address):
         raise HTTPException(status_code=422, detail="Invalid Solana address")
 
-    retry_after = limiter.hit(user_id)
+    retry_after = throttle.hit(identity)
     if retry_after:
         raise HTTPException(
             status_code=429,
@@ -101,22 +124,15 @@ async def scan(
     return ScanResponse.from_report(report)
 
 
-@app.post(WEBHOOK_PATH, include_in_schema=False)
-async def telegram_webhook(
+@app.post("/api/web/scan", response_model=ScanResponse, dependencies=[Depends(require_web_user)])
+async def web_scan(
+    body: ScanRequest,
     request: Request,
-    x_telegram_bot_api_secret_token: Annotated[str | None, Header()] = None,
-) -> dict[str, bool]:
-    if not config.WEBHOOK_SECRET:
-        raise HTTPException(status_code=404)
-    if not x_telegram_bot_api_secret_token or not hmac.compare_digest(
-        x_telegram_bot_api_secret_token, config.WEBHOOK_SECRET
-    ):
-        raise HTTPException(status_code=403)
-
-    bot = request.app.state.bot
-    update = Update.model_validate(await request.json(), context={"bot": bot})
-    try:
-        await request.app.state.dispatcher.feed_update(bot, update)
-    except Exception:
-        logger.exception("Failed to handle Telegram update %s", update.update_id)
-    return {"ok": True}
+    http_session: Annotated[aiohttp.ClientSession, Depends(get_http_session)],
+) -> ScanResponse:
+    identity = request.client.host if request.client else "unknown"
+    slots = request.app.state.web_scan_slots
+    if slots.locked():
+        raise HTTPException(503, "Scanner is busy. Try again shortly.")
+    async with slots:
+        return await scan_for(body, identity, web_limiter, http_session)

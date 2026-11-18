@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Demo Trading · Rimex Terminal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/jpeg" href="/static/brand/rimex-terminal.jpg">
+  <link rel="stylesheet" href="/static/css/site.css?v=5">
+  <script type="module" src="/static/js/trade.js?v=5"></script>
+</head>
+<body class="trade-site">
+  <nav class="site-nav" aria-label="Rimex Terminal">
+    <a class="site-brand" href="/"><span class="brand-mark" aria-hidden="true"></span> RIMEX TERMINAL</a>
+    <div class="nav-controls">
+      <a href="/">Scanner</a><a href="/trade" aria-current="page">Demo trading</a>
+      <span class="account-controls" data-account hidden>
+        <span data-username></span><button type="button">Sign out</button><span role="status"></span>
+      </span>
+    </div>
+  </nav>
+  <p id="web-auth-status" role="status" hidden></p>
+  <main class="terminal" hidden>
+    <header class="market-header">
+      <div>
+        <h1>SOL<span>/USDT</span></h1>
+        <p>Demo market · Virtual balances</p>
+      </div>
+      <div class="quote-panel">
+        <div><span>Best bid</span><strong id="bid" class="buy">—</strong></div>
+        <div><span>Best ask</span><strong id="ask" class="sell">—</strong></div>
+        <span id="feed" class="feed" data-live="false" role="status">Connecting to market</span>
+      </div>
+    </header>
+
+    <div class="terminal-grid">
+      <section class="terminal-card chart-card" aria-labelledby="chart-heading">
+        <div class="card-heading">
+          <h2 id="chart-heading">Price chart</h2>
+          <div id="chart-intervals" class="chart-intervals" aria-label="Chart interval">
+            <button type="button" data-interval="1m" aria-pressed="true">1m</button>
+            <button type="button" data-interval="5m" aria-pressed="false">5m</button>
+            <button type="button" data-interval="15m" aria-pressed="false">15m</button>
+          </div>
+        </div>
+        <p id="chart-summary" class="chart-summary"></p>
+        <canvas id="price-chart" tabindex="0" aria-label="SOL/USDT candlestick chart. Use the arrow keys to inspect a candle."
+                aria-describedby="chart-summary"></canvas>
+        <p id="chart-status" class="chart-status" role="status">Loading candles…</p>
+      </section>
+      <section class="terminal-card book-card" aria-labelledby="book-heading">
+        <div class="card-heading"><h2 id="book-heading">Order book</h2><span>SOL / USDT</span></div>
+        <table aria-label="Sell orders">
+          <thead><tr><th scope="col">Ask price</th><th scope="col">Size (SOL)</th></tr></thead>
+          <tbody id="asks"><tr><td colspan="2">Waiting for quotes</td></tr></tbody>
+        </table>
+        <table aria-label="Buy orders">
+          <thead><tr><th scope="col">Bid price</th><th scope="col">Size (SOL)</th></tr></thead>
+          <tbody id="bids"><tr><td colspan="2">Waiting for quotes</td></tr></tbody>
+        </table>
+      </section>
+
+      <section class="terminal-card order-card" aria-labelledby="order-heading">
+        <div class="card-heading"><h2 id="order-heading">Place order</h2></div>
+        <form id="order-form">
+          <fieldset class="side-picker">
+            <legend class="sr-only">Order side</legend>
+            <label><input name="side" value="buy" type="radio" checked><span>Buy SOL</span></label>
+            <label><input name="side" value="sell" type="radio"><span>Sell SOL</span></label>
+          </fieldset>
+          <fieldset class="side-picker kind-picker">
+            <legend class="sr-only">Order type</legend>
+            <label><input name="kind" value="limit" type="radio" checked><span>Limit</span></label>
+            <label><input name="kind" value="market" type="radio"><span>Market</span></label>
+          </fieldset>
+          <div id="price-field">
+            <label for="price">Limit price <span>USDT</span></label>
+            <div class="price-input">
+              <input id="price" name="price" type="number" inputmode="decimal" min=".01" max="100000" step=".01" required>
+              <button id="best-price" type="button" disabled>Use best</button>
+            </div>
+          </div>
+          <p id="market-note" class="chart-status" hidden>Market orders execute within 1% of the quote. Any unfilled amount is cancelled.</p>
+          <label for="size">Amount <span>SOL</span></label>
+          <input id="size" name="size" type="number" inputmode="decimal" min=".001" max="1000" step=".001" placeholder="0.000" required>
+          <p class="order-total"><span id="total-label">Order value</span><output id="total">—</output></p>
+          <button id="place" type="submit" disabled>Place buy order</button>
+          <p id="trade-notice" role="status"></p>
+        </form>
+      </section>
+
+      <section class="terminal-card wallet-card" aria-labelledby="wallet-heading">
+        <div class="card-heading"><h2 id="wallet-heading">Demo wallet</h2></div>
+        <dl id="wallet">
+          <div><dt>Available USDT</dt><dd id="cash">—</dd></div>
+          <div><dt>Available SOL</dt><dd id="sol">—</dd></div>
+          <div><dt>Reserved USDT</dt><dd id="locked-cash">—</dd></div>
+          <div><dt>Reserved SOL</dt><dd id="locked-sol">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="terminal-card history-card" aria-labelledby="orders-heading">
+        <div class="card-heading"><h2 id="orders-heading">Your orders</h2></div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th scope="col">Side</th><th scope="col">Price / Type</th><th scope="col">Amount</th><th scope="col">Remaining</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+            <tbody id="orders"><tr><td colspan="6">No orders yet</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="terminal-card fills-card" aria-labelledby="trades-heading">
+        <div class="card-heading"><h2 id="trades-heading">Recent fills</h2></div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th scope="col">Side</th><th scope="col">Price</th><th scope="col">Amount</th><th scope="col">Time</th></tr></thead>
+            <tbody id="trades"><tr><td colspan="4">No fills yet</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

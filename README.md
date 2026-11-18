@@ -2,41 +2,44 @@
 
 [![tests](https://github.com/rimxx23/rimex-terminal/actions/workflows/tests.yml/badge.svg)](https://github.com/rimxx23/rimex-terminal/actions/workflows/tests.yml)
 
-Fast anti-scam scanner for Solana tokens. Send a contract address — get a security card in under a second.
+Rimex Terminal is a website for scanning Solana tokens and practicing SOL/USDT trading with virtual balances.
 
-Available as a CLI tool, a Telegram bot ([@rimexscanner_bot](https://t.me/rimexscanner_bot)) and a Telegram Mini App.
+## Quick start
+
+```bash
+docker compose up -d --build
+```
+
+Open [Rimex Terminal](http://localhost:8001/) and create an account. Sign in to
+use the token scanner and demo trading. Each account starts with 10,000 virtual
+USDT and 5 virtual SOL. When you register in a browser with an existing guest
+wallet, Rimex carries over its balance and trading history.
+
+The SOL/USDT terminal shows public Binance candles at 1m, 5m and 15m, with
+your fills and active orders overlaid. Limit orders can rest in the book and
+be cancelled. Market orders execute against available liquidity within 1%
+of the live quote and cancel any remainder. Public Binance quotes drive
+simulated liquidity. SQLite stores accounts, balances, orders and fills in the Docker
+volume. Rimex pauses new orders when the quote expires.
+
+Docker Compose reads optional settings from `.env`. Set `RIMEX_PORT` to change
+the host port, `SOLANA_RPC_URL` to use another Solana RPC provider, or
+`FORWARDED_ALLOW_IPS` to trust a designated reverse proxy.
+
+To run directly with Python:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn rimex.presentation.api.app:app --port 8001
+```
 
 ## Architecture
 
-Layered architecture — dependencies point inward only:
-
-```
-presentation ──► services ──► clients ──► domain
-  CLI, bot,       scan            DexScreener,    TokenReport,
-  FastAPI         orchestration   GeckoTerminal,  risk rules,
-                                  RugCheck, RPC   address
-```
-
-```
-rimex/
-  domain/         models.py, risk.py, address.py   — no I/O, no frameworks
-  clients/        one module per external API: fetch + parse into TokenReport
-  services/       scanner.py — parallel requests, fallbacks, error handling
-  presentation/
-    cli.py        python -m rimex <address>
-    telegram/     aiogram bot: handlers, cards, keyboards, middlewares
-    api/          FastAPI: Mini App API, Telegram webhook, initData auth
-  config.py       settings from environment
-webapp/           Mini App frontend: vanilla JS ES modules, no build step
-  js/             api, telegram, fallback, levels (verdict), history, views/
-  css/
-```
-
-`tests/test_architecture.py` fails if an inner layer imports an outer one (e.g. FastAPI in `services`).
-
-One scanning core, three interfaces.
-
-In production the bot does not scan in chat: it replies with an **Open in X-Ray** button that opens the Mini App with the token. Market data APIs rate-limit shared hosting IPs, so the Mini App fills missing market and holder data directly from the user's device.
+The website uses HTML, CSS and JavaScript in `webapp/`. FastAPI exposes the
+website and its API. Inside `rimex/`, services coordinate scanning and trading,
+clients fetch external data, and domain modules define risk and order rules.
 
 ## What it checks
 
@@ -70,94 +73,38 @@ RugCheck risk:  7 (lower is safer)
 Scan time:      0.45s
 ```
 
-## Quick start
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-CLI:
-
-```bash
-python -m rimex <token address>
-```
-
-Telegram bot:
-
-```bash
-cp .env.example .env
-python -m rimex.presentation.telegram
-```
-
-Set `BOT_TOKEN` in `.env` (get it from [@BotFather](https://t.me/BotFather)).
-
-Mini App API:
-
-```bash
-uvicorn rimex.presentation.api.app:app --port 8000
-```
-
-Telegram requires HTTPS for Mini Apps. Put the public HTTPS URL into `WEBAPP_URL` in `.env` and restart the bot — it will add an **X-Ray** menu button.
-
-### Tests
+## Tests
 
 ```bash
 pip install -r requirements-dev.txt
 pytest
-```
-
-Mini App logic (verdict, history, device fallbacks) is tested with Node's built-in runner:
-
-```bash
 node --test "tests/js/*.test.mjs"
-```
-
-External APIs are mocked — tests run offline in about a second.
-
-### Production (webhook mode)
-
-In production the bot and the Mini App run in **one process**: FastAPI receives Telegram updates on `POST /telegram/webhook` and passes them to aiogram. Webhook mode turns on when `WEBHOOK_SECRET` and `PUBLIC_URL` are set (on Render `PUBLIC_URL` is taken from `RENDER_EXTERNAL_URL` automatically). Telegram signs every webhook request with `X-Telegram-Bot-Api-Secret-Token`; requests without the right secret get `403`.
-
-Deploy on Render: New → Web Service → this repo → Docker, health check path `/health`, env vars `BOT_TOKEN` and `WEBHOOK_SECRET`.
-
-`python -m rimex.presentation.telegram` runs the bot in polling mode for local development and removes the webhook — redeploy (or restart) the service afterwards.
-
-### Docker
-
-```bash
-cp .env.example .env
-docker compose up -d --build
-docker compose logs -f
 ```
 
 ## Tech stack
 
 - Python 3.14, `asyncio`, `aiohttp`
-- `aiogram` 3 — Telegram bot
-- FastAPI + Pydantic — Mini App API
-- Vanilla JS + Telegram WebApp SDK — Mini App frontend
+- FastAPI + Pydantic — web API
+- Vanilla JavaScript and SQLite
 - pytest + pytest-asyncio, GitHub Actions CI
 - Docker / Docker Compose
 
 ## Engineering notes
 
-- **Mini App:** overall verdict on top of every scan, profile with the last 10 scans stored in Telegram CloudStorage (synced across the user's devices, validated on load).
+- **Website:** overall verdict on each scan, with the last 10 scans stored in the browser.
 
 - **Parallel I/O:** three HTTP sources via `asyncio.gather(..., return_exceptions=True)` — one failing source does not break the scan.
 - **Timeouts:** 3s for critical sources, 1.5s for optional RugCheck.
 - **Caching:** successful RugCheck responses are cached in memory for 5 minutes.
-- **Rate limiting:** 5 requests per user per minute (sliding window middleware) and max 10 concurrent scans (semaphore) to protect upstream APIs.
-- **Safety:** token names are HTML-escaped before rendering — scam tokens can put markup in their names. The Mini App renders data with `textContent` only.
-- **Mini App auth:** every API request carries Telegram `initData`, verified with HMAC-SHA256 using the bot token, and rejected if older than 24h.
+- **Rate limiting:** 5 scans per IP per minute and max 10 concurrent scans (semaphore) to protect upstream APIs.
+- **Safety:** token names are HTML-escaped before rendering — scam tokens can put markup in their names. The website renders data with `textContent` only.
+- **Web auth:** session cookies are checked by the server and revoked on sign-out.
 - **Money:** prices are `Decimal`, not `float`.
 
 ## Roadmap
 
 - [x] CLI scanner
-- [x] Telegram bot
-- [x] Telegram Mini App
+- [x] Web scanner and SOL/USDT demo trading
 - [ ] Deployment
 - [ ] Landing page
 - [ ] Web terminal (FastAPI + WebSockets)

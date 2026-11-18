@@ -3,12 +3,20 @@ name: rimex-terminal
 services:
   app:
     build: .
-    env_file: .env
+    environment:
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL:-}
+      DEMO_DB_PATH: ${DEMO_DB_PATH:-/app/data/rimex-demo.sqlite3}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${RIMEX_PORT:-8001}:8000"
+    volumes:
+      - demo_data:/app/data
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  demo_data:

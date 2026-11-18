@@ -19,12 +19,12 @@ export function haptic(type) {
 }
 
 export function openLink(url) {
-  if (tg?.openLink) tg.openLink(url);
+  if (initData() && tg?.openLink) tg.openLink(url);
   else window.open(url, "_blank", "noopener");
 }
 
 export function showBackButton(onBack) {
-  if (!tg?.BackButton) return () => {};
+  if (!initData() || !tg?.BackButton) return () => {};
   tg.BackButton.onClick(onBack);
   tg.BackButton.show();
   return () => {
@@ -65,5 +65,5 @@ function localStorageBackend() {
 }
 
 export function createStorage() {
-  return cloudStorage() ?? localStorageBackend();
+  return (initData() ? cloudStorage() : null) ?? localStorageBackend();
 }

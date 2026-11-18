@@ -1,21 +1,10 @@
-import { ApiError, scanToken } from "./api.js";
+import { ApiError, scanToken } from "./api.js?v=2";
+import { loginPage, prepareSession } from "./session.js?v=2";
 import { fillMissingData } from "./fallback.js";
-import { createHistory } from "./history.js";
+import { createBrowserStorage, createHistory } from "./history.js?v=2";
 import { SOLANA_ADDRESS_RE } from "./levels.js";
-import {
-  createStorage,
-  haptic,
-  initData,
-  initTelegram,
-  openLink,
-  showBackButton,
-  startParam,
-  telegramUser,
-} from "./telegram.js";
-import { renderAvatar, renderProfile } from "./views/profile.js";
+import { renderAvatar, renderProfile } from "./views/profile.js?v=2";
 import { renderHint, renderLoading, renderMessage, renderReport } from "./views/scan.js";
-
-const HAPTIC_BY_VERDICT = { danger: "warning", warning: "warning", safe: "success", unknown: "warning" };
 
 const dom = {
   form: document.getElementById("scan-form"),
@@ -31,9 +20,8 @@ const dom = {
   toast: document.getElementById("toast"),
 };
 
-const history = createHistory(createStorage());
-const user = telegramUser();
-let hideBackButton = () => {};
+const history = createHistory(createBrowserStorage());
+let user;
 let toastTimer;
 
 function showToast(text) {
@@ -53,8 +41,6 @@ async function copyAddress(address) {
 }
 
 function showScanView() {
-  hideBackButton();
-  hideBackButton = () => {};
   dom.profileView.hidden = true;
   dom.scanView.hidden = false;
 }
@@ -62,7 +48,6 @@ function showScanView() {
 async function showProfileView() {
   dom.scanView.hidden = true;
   dom.profileView.hidden = false;
-  hideBackButton = showBackButton(showScanView);
   await refreshProfile();
 }
 
@@ -86,20 +71,34 @@ async function scan(address) {
   dom.button.disabled = true;
   renderLoading(dom.result);
   try {
-    const report = await fillMissingData(await scanToken(address, initData()));
-    const verdict = renderReport(dom.result, dom.template, report, { onOpenLink: openLink, onCopy: copyAddress });
-    haptic(HAPTIC_BY_VERDICT[verdict.level]);
+    const report = await fillMissingData(await scanToken(address));
+    const verdict = renderReport(dom.result, dom.template, report, {
+      onOpenLink: (url) => window.open(url, "_blank", "noopener"), onCopy: copyAddress,
+    });
     await history.add({ address, symbol: report.symbol, verdict: verdict.level, scannedAt: Date.now() });
   } catch (error) {
+    if (error.status === 401) {
+      loginPage();
+      return;
+    }
     renderMessage(dom.result, error instanceof ApiError ? error.message : "Something went wrong. Try again.");
-    haptic("error");
   } finally {
     dom.button.disabled = false;
   }
 }
 
-function start() {
-  initTelegram();
+async function start() {
+  try {
+    user = await prepareSession();
+    if (!user) return;
+  } catch (error) {
+    const status = document.getElementById("web-auth-status");
+    status.textContent = error.message;
+    status.hidden = false;
+    return;
+  }
+  dom.profileButton.hidden = false;
+  dom.scanView.hidden = false;
   dom.profileButton.replaceChildren(renderAvatar(user, "avatar"));
   dom.profileButton.addEventListener("click", showProfileView);
   dom.backButton.addEventListener("click", showScanView);
@@ -117,7 +116,7 @@ function start() {
   });
 
   renderHint(dom.result);
-  const initial = startParam() || new URLSearchParams(location.search).get("address");
+  const initial = new URLSearchParams(location.search).get("address");
   if (initial && SOLANA_ADDRESS_RE.test(initial)) {
     dom.input.value = initial;
     scan(initial);

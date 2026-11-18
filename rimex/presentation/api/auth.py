@@ -14,6 +14,8 @@ def get_telegram_user_id(
 ) -> int:
     if not x_telegram_init_data:
         raise HTTPException(status_code=401, detail="Open this app from Telegram")
+    if not config.BOT_TOKEN:
+        raise HTTPException(status_code=503, detail="Telegram is unavailable")
     try:
         init_data = safe_parse_webapp_init_data(config.BOT_TOKEN, x_telegram_init_data)
     except ValueError:

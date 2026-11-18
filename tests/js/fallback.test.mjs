@@ -68,27 +68,27 @@ test("nothing is requested when the server already has everything", async () => 
   assert.equal(calls.length, 0);
 });
 
-test("scanToken sends Telegram initData and returns the report", async () => {
+test("scanToken uses the website endpoint and returns the report", async () => {
   let sent;
   const fetchImpl = async (url, options) => {
     sent = { url, options };
     return jsonResponse({ address: ADDRESS });
   };
 
-  const report = await scanToken(ADDRESS, "signed-init-data", fetchImpl);
+  const report = await scanToken(ADDRESS, fetchImpl);
 
   assert.equal(report.address, ADDRESS);
-  assert.equal(sent.url, "/api/scan");
-  assert.equal(sent.options.headers["X-Telegram-Init-Data"], "signed-init-data");
+  assert.equal(sent.url, "/api/web/scan");
+  assert.deepEqual(sent.options.headers, { "Content-Type": "application/json" });
 });
 
 test("scanToken turns API errors into readable messages", async () => {
   await assert.rejects(
-    scanToken(ADDRESS, "", async () => jsonResponse({ detail: "Too many requests. Try again in 30s" }, 429)),
+    scanToken(ADDRESS, async () => jsonResponse({ detail: "Too many requests. Try again in 30s" }, 429)),
     (error) => error instanceof ApiError && error.message === "Too many requests. Try again in 30s"
   );
   await assert.rejects(
-    scanToken(ADDRESS, "", async () => { throw new TypeError("offline"); }),
+    scanToken(ADDRESS, async () => { throw new TypeError("offline"); }),
     (error) => error instanceof ApiError && error.message === "Network error. Try again."
   );
 });

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Sign in · Rimex Terminal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/jpeg" href="/static/brand/rimex-terminal.jpg">
+  <link rel="stylesheet" href="/static/css/site.css?v=4">
+  <script type="module" src="/static/js/login.js"></script>
+</head>
+<body class="trade-site auth-site">
+  <nav class="site-nav" aria-label="Rimex Terminal">
+    <a class="site-brand" href="/"><span class="brand-mark" aria-hidden="true"></span> RIMEX TERMINAL</a>
+  </nav>
+  <main class="auth-layout">
+    <div class="auth-visual" aria-hidden="true">
+      <img src="/static/brand/rimex-terminal.jpg" alt="" width="1024" height="1024">
+    </div>
+    <section class="terminal-card auth-card" aria-labelledby="auth-title">
+      <h1 id="auth-title">Sign in to Rimex</h1>
+      <p class="auth-intro">Access the Solana scanner and your demo trading balance.</p>
+      <form id="auth-form">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" minlength="3" maxlength="32"
+               pattern="[a-zA-Z0-9_.\-]+" required>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password"
+               minlength="8" maxlength="128" required>
+        <p id="password-hint" hidden>Use at least 8 characters.</p>
+        <button id="auth-submit" type="submit">Sign in</button>
+        <p id="auth-error" role="status"></p>
+      </form>
+      <button id="auth-toggle" type="button">Create an account</button>
+    </section>
+  </main>
+</body>
+</html>

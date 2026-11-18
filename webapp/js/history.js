@@ -48,3 +48,24 @@ export function createHistory(storage) {
     },
   };
 }
+
+
+export function createBrowserStorage() {
+  const memory = new Map();
+  return {
+    async getItem(key) {
+      try {
+        return window.localStorage.getItem(key);
+      } catch {
+        return memory.get(key) ?? null;
+      }
+    },
+    async setItem(key, value) {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        memory.set(key, value);
+      }
+    },
+  };
+}
