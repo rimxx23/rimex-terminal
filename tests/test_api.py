@@ -59,7 +59,6 @@ def test_index_serves_website(signed_in):
 
     assert response.status_code == 200
     assert "RIMEX" in response.text
-    assert "telegram-web-app.js" not in response.text
 
 
 def test_scan_with_a_session(signed_in, scanned_addresses):

@@ -11,7 +11,6 @@ from rimex.domain.risk import assess_honeypot, dev_holding_risk_level, pool_age_
 from rimex.presentation.api.schemas import ScanResponse
 from rimex.presentation.cli import format_report
 from rimex.presentation.formatting import format_pool_age, human_age
-from rimex.presentation.telegram.cards import format_card
 from tests.conftest import BONK
 
 USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
@@ -151,14 +150,10 @@ def test_api_response_has_new_fields():
     assert response.dev_level == "danger"
 
 
-def test_card_and_cli_show_known_token_and_new_rows():
+def test_cli_shows_known_token_and_new_rows():
     report = TokenReport(address=USDC, authorities_loaded=True, developer_holding_pct=Decimal("1"))
 
-    card = format_card(report)
     cli = format_report(report)
 
-    assert "✅ Known token: USDC by Circle" in card
-    assert "Developer holds: 🟢 1.0%" in card
-    assert "⏱ Pool age: —" in card
     assert "✅ Known token: USDC by Circle" in cli
     assert "Developer:      🟢 1.0%" in cli

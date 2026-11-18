@@ -23,7 +23,7 @@ jobs:
       - name: Run tests
         run: pytest -v
 
-  mini-app:
+  frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,5 +32,5 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Run Mini App tests
+      - name: Run website tests
         run: node --test "tests/js/*.test.mjs"

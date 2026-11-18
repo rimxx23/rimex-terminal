@@ -5,7 +5,6 @@ from rimex.clients.solana_rpc import apply_mint_account
 from rimex.domain.models import TokenReport
 from rimex.domain.risk import assess_honeypot
 from rimex.presentation.api.schemas import ScanResponse
-from rimex.presentation.telegram.cards import format_card
 from tests.conftest import BONK
 
 OWNER = "2apBGMsS6ti9RyF5TwQTDswXBWskiJP2LD4cUEDqYJjk"
@@ -157,12 +156,3 @@ def test_api_response_contains_honeypot_assessment():
     assert response.honeypot_level == "danger"
     assert response.honeypot_reasons == ["permanent delegate can move tokens from any wallet"]
     assert response.permanent_delegate == OWNER
-
-
-def test_bot_card_shows_honeypot_line_and_reasons():
-    report = scanned([transfer_fee(1500)])
-
-    card = format_card(report)
-
-    assert "Honeypot: 🔴 sell restrictions" in card
-    assert "  · transfer fee 15%" in card

@@ -70,9 +70,8 @@ def test_quote_rounds_outward():
     assert parse_quote("73.353", "73.357") == (7335, 7336)
 
 
-def test_web_scan_without_telegram_and_rate_limit(monkeypatch, tmp_path):
+def test_web_scan_rate_limit(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "DEMO_DB_PATH", tmp_path / "demo.sqlite3")
-    monkeypatch.setattr(config, "BOT_TOKEN", "")
     monkeypatch.setattr(api, "web_limiter", SlidingWindowLimiter(1, 60))
 
     async def scan(address, _session):
@@ -89,7 +88,6 @@ def test_web_scan_without_telegram_and_rate_limit(monkeypatch, tmp_path):
         response = client.post("/api/web/scan", json={"address": BONK})
         assert response.status_code == 429
         assert response.headers["Retry-After"]
-        assert client.post("/api/scan", json={"address": BONK}).status_code == 404
 
 
 def test_demo_browser_session_requires_trade_header_and_isolates_wallet(tmp_path, monkeypatch):

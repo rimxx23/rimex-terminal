@@ -6,9 +6,9 @@ import pytest
 PACKAGE = Path(__file__).resolve().parents[1] / "rimex"
 
 FORBIDDEN_IMPORTS = {
-    "domain": ["aiohttp", "aiogram", "fastapi", "pydantic", "rimex.clients", "rimex.services", "rimex.presentation"],
-    "clients": ["aiogram", "fastapi", "rimex.services", "rimex.presentation"],
-    "services": ["aiogram", "fastapi", "rimex.presentation"],
+    "domain": ["aiohttp", "fastapi", "pydantic", "rimex.clients", "rimex.services", "rimex.presentation"],
+    "clients": ["fastapi", "rimex.services", "rimex.presentation"],
+    "services": ["fastapi", "rimex.presentation"],
 }
 
 
